@@ -1,0 +1,60 @@
+Run-IQ Source-Available License v1.0
+
+Copyright (c) 2025 Abdou-Raouf ATARMLA. All rights reserved.
+
+
+1. DEFINITIONS
+
+"Software" means the source code, object code, documentation, and any
+associated files distributed under this license.
+
+"Commercial Use" means any use of the Software intended for or directed toward
+commercial advantage or monetary compensation, including but not limited to:
+  (a) incorporating the Software into a product or service sold to third parties;
+  (b) using the Software to provide paid consulting, managed, or SaaS services;
+  (c) using the Software in internal business operations that generate revenue.
+
+"Non-Commercial Use" means personal use, academic research, educational
+purposes, and evaluation, provided no Commercial Use is involved.
+
+
+2. GRANT — NON-COMMERCIAL USE
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+the Software, to use, copy, modify, and distribute the Software solely for
+Non-Commercial Use, subject to the following conditions:
+
+  (a) The above copyright notice and this license shall be included in all
+      copies or substantial portions of the Software.
+  (b) Modified versions must be clearly marked as such and must not be
+      misrepresented as the original Software.
+
+
+3. COMMERCIAL USE — LICENSE REQUIRED
+
+Any Commercial Use of the Software requires a separate commercial license
+agreement with the copyright holder. To obtain a commercial license, contact:
+
+  Abdou-Raouf ATARMLA
+  contact@run-iq.org
+
+
+4. RESTRICTIONS
+
+You may not:
+  (a) remove or alter any copyright, trademark, or attribution notices;
+  (b) sublicense, sell, or redistribute the Software for Commercial Use
+      without a commercial license;
+  (c) use the name "Run-IQ" or the copyright holder's name to endorse or
+      promote products derived from the Software without prior written consent.
+
+
+5. NO WARRANTY
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
