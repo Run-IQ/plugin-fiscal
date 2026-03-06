@@ -44,6 +44,14 @@
     "typescript": "^5.4.0",
     "vitest": "^1.3.0"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Run-IQ/plugin-fiscal.git"
+  },
+  "homepage": "https://github.com/Run-IQ/plugin-fiscal#readme",
+  "bugs": {
+    "url": "https://github.com/Run-IQ/plugin-fiscal/issues"
+  },
   "author": "Abdou-Raouf ATARMLA",
   "license": "SEE LICENSE IN LICENSE",
   "engines": {
