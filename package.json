@@ -31,12 +31,10 @@
     "@run-iq/plugin-sdk": "^0.1.0"
   },
   "dependencies": {
-    "@run-iq/core": "file:../core",
-    "@run-iq/plugin-sdk": "file:../plugin-sdk",
     "decimal.js": "^10.4.3"
   },
   "devDependencies": {
-    "@run-iq/dsl-jsonlogic": "file:../dsl-jsonlogic",
+    "@run-iq/dsl-jsonlogic": "^0.1.0",
     "@types/node": "^20.11.0",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
