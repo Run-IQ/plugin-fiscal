@@ -1,0 +1,10 @@
+export type FiscalCalculationModel =
+  | 'FLAT_RATE'
+  | 'PROGRESSIVE_BRACKET'
+  | 'MINIMUM_TAX'
+  | 'THRESHOLD_BASED'
+  | 'FIXED_AMOUNT'
+  | 'COMPOSITE'
+  | 'META_INHIBITION'
+  | 'META_SUBSTITUTION'
+  | 'META_SHORT_CIRCUIT';
