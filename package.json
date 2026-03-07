@@ -1,6 +1,6 @@
 {
   "name": "@run-iq/plugin-fiscal",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Fiscal domain plugin for PPE — tax calculation models",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -28,7 +28,7 @@
   },
   "peerDependencies": {
     "@run-iq/core": "^0.1.0",
-    "@run-iq/plugin-sdk": "^0.1.0"
+    "@run-iq/plugin-sdk": "^0.2.0"
   },
   "dependencies": {
     "decimal.js": "^10.4.3"
