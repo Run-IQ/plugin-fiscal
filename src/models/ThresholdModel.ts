@@ -1,6 +1,6 @@
 import Decimal from 'decimal.js';
 import { BaseModel, SchemaValidator } from '@run-iq/plugin-sdk';
-import type { ValidationResult, Rule } from '@run-iq/core';
+import type { ValidationResult, CalculationOutput, Rule } from '@run-iq/core';
 import type { ThresholdParams } from '../types/params.js';
 
 export class ThresholdModel extends BaseModel {
@@ -16,20 +16,39 @@ export class ThresholdModel extends BaseModel {
     });
   }
 
-  calculate(input: Record<string, unknown>, _matchedRule: Readonly<Rule>, params: unknown): number {
+  calculate(input: Record<string, unknown>, _matchedRule: Readonly<Rule>, params: unknown): CalculationOutput {
     const p = params as ThresholdParams;
     const baseValue = new Decimal(String(input[p.base] ?? 0));
     const threshold = new Decimal(String(p.threshold));
     const rate = new Decimal(String(p.rate));
 
     if (baseValue.lte(threshold)) {
-      return 0;
+      return {
+        value: 0,
+        detail: {
+          base: baseValue.toNumber(),
+          threshold: p.threshold,
+          belowThreshold: true,
+        },
+      };
     }
 
-    if (p.above_only) {
-      return baseValue.minus(threshold).mul(rate).toNumber();
-    }
+    const value = p.above_only
+      ? baseValue.minus(threshold).mul(rate).toNumber()
+      : baseValue.mul(rate).toNumber();
 
-    return baseValue.mul(rate).toNumber();
+    return {
+      value,
+      detail: {
+        base: baseValue.toNumber(),
+        threshold: p.threshold,
+        belowThreshold: false,
+        aboveOnly: p.above_only,
+        taxableAmount: p.above_only
+          ? baseValue.minus(threshold).toNumber()
+          : baseValue.toNumber(),
+        rate: p.rate,
+      },
+    };
   }
 }

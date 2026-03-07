@@ -12,33 +12,43 @@ describe('MinimumTaxModel', () => {
   it('returns computed tax when above minimum', () => {
     // 5,000,000 * 0.27 = 1,350,000 > 500,000
     const result = model.calculate({ taxable_profit: 5000000 }, dummyRule, isParams);
-    expect(result).toBe(1350000);
+    expect(result.value).toBe(1350000);
   });
 
   it('returns minimum when computed tax is below minimum', () => {
     // 1,000,000 * 0.27 = 270,000 < 500,000
     const result = model.calculate({ taxable_profit: 1000000 }, dummyRule, isParams);
-    expect(result).toBe(500000);
+    expect(result.value).toBe(500000);
   });
 
   it('returns minimum when base is zero', () => {
     const result = model.calculate({ taxable_profit: 0 }, dummyRule, isParams);
-    expect(result).toBe(500000);
+    expect(result.value).toBe(500000);
+  });
+
+  it('detail shows appliedMinimum flag', () => {
+    const above = model.calculate({ taxable_profit: 5000000 }, dummyRule, isParams);
+    const detail1 = above.detail as { appliedMinimum: boolean };
+    expect(detail1.appliedMinimum).toBe(false);
+
+    const below = model.calculate({ taxable_profit: 1000000 }, dummyRule, isParams);
+    const detail2 = below.detail as { appliedMinimum: boolean };
+    expect(detail2.appliedMinimum).toBe(true);
   });
 
   it('exact threshold: computed = minimum', () => {
-    // x * 0.27 = 500,000 → x = 1,851,851.85...
+    // x * 0.27 = 500,000 -> x = 1,851,851.85...
     // At 1,851,852: 1851852 * 0.27 = 500,000.04 > 500,000
     const result = model.calculate({ taxable_profit: 1851852 }, dummyRule, isParams);
-    expect(result).toBeGreaterThanOrEqual(500000);
+    expect(result.value).toBeGreaterThanOrEqual(500000);
   });
 
   it('determinism: same call x3 = same result', () => {
     const r1 = model.calculate({ taxable_profit: 3000000 }, dummyRule, isParams);
     const r2 = model.calculate({ taxable_profit: 3000000 }, dummyRule, isParams);
     const r3 = model.calculate({ taxable_profit: 3000000 }, dummyRule, isParams);
-    expect(r1).toBe(r2);
-    expect(r2).toBe(r3);
+    expect(r1.value).toBe(r2.value);
+    expect(r2.value).toBe(r3.value);
   });
 
   it('validates valid params', () => {

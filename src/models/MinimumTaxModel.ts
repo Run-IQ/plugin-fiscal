@@ -1,6 +1,6 @@
 import Decimal from 'decimal.js';
 import { BaseModel, SchemaValidator } from '@run-iq/plugin-sdk';
-import type { ValidationResult, Rule } from '@run-iq/core';
+import type { ValidationResult, CalculationOutput, Rule } from '@run-iq/core';
 import type { MinimumTaxParams } from '../types/params.js';
 
 export class MinimumTaxModel extends BaseModel {
@@ -15,12 +15,24 @@ export class MinimumTaxModel extends BaseModel {
     });
   }
 
-  calculate(input: Record<string, unknown>, _matchedRule: Readonly<Rule>, params: unknown): number {
+  calculate(input: Record<string, unknown>, _matchedRule: Readonly<Rule>, params: unknown): CalculationOutput {
     const p = params as MinimumTaxParams;
     const baseValue = new Decimal(String(input[p.base] ?? 0));
     const rate = new Decimal(String(p.rate));
     const minimum = new Decimal(String(p.minimum));
     const computed = baseValue.mul(rate);
-    return Decimal.max(computed, minimum).toNumber();
+    const appliedMinimum = computed.lt(minimum);
+    const value = Decimal.max(computed, minimum).toNumber();
+
+    return {
+      value,
+      detail: {
+        base: baseValue.toNumber(),
+        rate: p.rate,
+        computed: computed.toNumber(),
+        minimum: p.minimum,
+        appliedMinimum,
+      },
+    };
   }
 }

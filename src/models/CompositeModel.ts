@@ -1,6 +1,6 @@
 import Decimal from 'decimal.js';
 import { BaseModel } from '@run-iq/plugin-sdk';
-import type { ValidationResult, Rule, CalculationModel } from '@run-iq/core';
+import type { ValidationResult, CalculationOutput, CalculationModel, Rule } from '@run-iq/core';
 import type { CompositeParams } from '../types/params.js';
 import { FlatRateModel } from './FlatRateModel.js';
 import { ProgressiveBracketModel } from './ProgressiveBracketModel.js';
@@ -39,30 +39,54 @@ export class CompositeModel extends BaseModel {
     return errors.length > 0 ? { valid: false, errors } : { valid: true };
   }
 
-  calculate(input: Record<string, unknown>, matchedRule: Readonly<Rule>, params: unknown): number {
+  calculate(input: Record<string, unknown>, matchedRule: Readonly<Rule>, params: unknown): CalculationOutput {
     const p = params as CompositeParams;
     const contributions: Decimal[] = [];
+    const steps: Array<{
+      model: string;
+      label?: string | undefined;
+      value: number;
+      detail?: unknown | undefined;
+    }> = [];
 
     for (const step of p.steps) {
       const subModel = SUB_MODELS[step.model];
       if (!subModel) {
         continue;
       }
-      const value = subModel.calculate(input, matchedRule, step.params);
+      const raw = subModel.calculate(input, matchedRule, step.params);
+      const value = typeof raw === 'number' ? raw : raw.value;
+      const detail = typeof raw === 'number' ? undefined : raw.detail;
+
       contributions.push(new Decimal(String(value)));
+      steps.push({
+        model: step.model,
+        label: step.label,
+        value,
+        detail,
+      });
     }
 
     if (contributions.length === 0) {
-      return 0;
+      return { value: 0, detail: { aggregation: p.aggregation, steps: [] } };
     }
 
+    let result: number;
     switch (p.aggregation) {
       case 'SUM':
-        return contributions.reduce((acc, v) => acc.plus(v), new Decimal(0)).toNumber();
+        result = contributions.reduce((acc, v) => acc.plus(v), new Decimal(0)).toNumber();
+        break;
       case 'MAX':
-        return Decimal.max(...contributions).toNumber();
+        result = Decimal.max(...contributions).toNumber();
+        break;
       case 'MIN':
-        return Decimal.min(...contributions).toNumber();
+        result = Decimal.min(...contributions).toNumber();
+        break;
     }
+
+    return {
+      value: result,
+      detail: { aggregation: p.aggregation, steps },
+    };
   }
 }
