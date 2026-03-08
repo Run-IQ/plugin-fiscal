@@ -29,12 +29,12 @@
     "lint:fix": "eslint src/ tests/ --fix && prettier --write src/ tests/"
   },
   "peerDependencies": {
-    "@run-iq/core": "^0.2.2",
+    "@run-iq/core": "^0.2.3",
     "@run-iq/plugin-sdk": "^0.2.3"
   },
   "dependencies": {
-    "decimal.js": "^10.4.3",
-    "@run-iq/dsl-jsonlogic": "^0.1.2"
+    "@run-iq/dsl-jsonlogic": "^0.1.2",
+    "decimal.js": "^10.4.3"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",

@@ -76,6 +76,9 @@ export class FiscalPlugin extends BasePlugin {
     const country = input.meta.context?.['country'] as string | undefined;
 
     const processedRules = (metaResult.rules as FiscalRule[]).map((f) => {
+      if (f.priority) {
+        console.log(`[FiscalPlugin] Rule ${f.id} has explicit priority: ${f.priority}`);
+      }
       const priority = (f.priority && f.priority > 0) 
         ? f.priority 
         : (JurisdictionResolver.resolve(f.jurisdiction, f.scope) || 1000);
