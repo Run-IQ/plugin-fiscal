@@ -2,7 +2,7 @@ import type { BeforeEvaluateResult, EvaluationInput, EvaluationResult, Rule, Cal
 import type { FiscalRule } from './types/fiscal-rule.js';
 import { BasePlugin } from '@run-iq/plugin-sdk';
 import { JurisdictionResolver } from './jurisdiction/JurisdictionResolver.js';
-import { MetaRuleProcessor } from './meta/MetaRuleProcessor.js';
+import { MetaRuleProcessor, type MetaAction } from './meta/MetaRuleProcessor.js';
 import { FlatRateModel } from './models/FlatRateModel.js';
 import { ProgressiveBracketModel } from './models/ProgressiveBracketModel.js';
 import { MinimumTaxModel } from './models/MinimumTaxModel.js';
@@ -28,113 +28,111 @@ export class FiscalPlugin extends BasePlugin {
 
   override beforeEvaluate(input: EvaluationInput, rules: ReadonlyArray<Rule>): BeforeEvaluateResult {
     const fiscalRules = rules as ReadonlyArray<FiscalRule>;
-
-    // 1. Evaluate meta-rule conditions using input data
-    //    (simplified: we check conditions inline since we don't have DSL access here)
     const conditionResults = new Map<string, boolean>();
+
     for (const rule of fiscalRules) {
       if (META_MODELS.has(rule.model) && rule.condition) {
-        // Meta-rule conditions are evaluated later by the core engine.
-        // For now, we evaluate simple equality conditions inline.
         conditionResults.set(rule.id, this.evaluateSimpleCondition(rule.condition, input.data));
       }
     }
 
-    // 2. Process meta-rules (short-circuit, inhibit, substitute)
     const metaResult = MetaRuleProcessor.process(rules, conditionResults);
 
-    // 3. Handle short-circuit: return empty rules with special marker
-    if (metaResult.shortCircuit) {
-      return {
-        input: {
-          ...input,
-          data: {
-            ...input.data,
-            _shortCircuit: metaResult.shortCircuit,
-          },
-        },
-        rules: [],
-      };
-    }
-
-    // 4. Resolve priorities from jurisdiction + scope on remaining rules
-    const remainingFiscalRules = metaResult.rules as ReadonlyArray<FiscalRule>;
-    const resolvedRules = remainingFiscalRules.map((rule) => ({
-      ...rule,
-      priority: JurisdictionResolver.resolve(rule.jurisdiction, rule.scope),
-    }));
-
-    // 5. Filter by country if provided in context
+    // Filter by country context
     const country = input.meta.context?.['country'] as string | undefined;
-    const filteredRules = country
-      ? resolvedRules.filter((r) => r.country === country)
-      : resolvedRules;
+    const filteredRules = metaResult.rules.map((rule) => {
+      const f = rule as FiscalRule;
+      return {
+        ...f,
+        priority: JurisdictionResolver.resolve(f.jurisdiction, f.scope),
+      };
+    }).filter(r => !country || (r as unknown as FiscalRule).country === country);
 
-    // IMMUTABLE — return new values
     return {
       input: {
         ...input,
         data: {
           ...input.data,
-          _inhibitedRuleIds: metaResult.inhibitedIds,
-          _substitutedRuleIds: metaResult.substitutedIds,
+          __fiscal_meta_actions: metaResult.actions,
+          __fiscal_short_circuit: metaResult.shortCircuit,
+          __fiscal_original_rules: rules, // Preserve original rules for reporting inhibited ones
         },
       },
       rules: filteredRules as unknown as Rule[],
     };
   }
 
-  override afterEvaluate(_input: EvaluationInput, result: EvaluationResult): EvaluationResult {
-    // Enrich result with fiscal breakdown by category
-    const fiscalBreakdown: Record<string, number> = {};
+  override afterEvaluate(input: EvaluationInput, result: EvaluationResult): EvaluationResult {
+    const actions = (input.data.__fiscal_meta_actions as MetaAction[]) || [];
+    const shortCircuit = input.data.__fiscal_short_circuit as any;
+    const originalRules = (input.data.__fiscal_original_rules as Rule[]) || [];
 
-    for (const item of result.breakdown) {
-      const rule = result.appliedRules.find((r) => r.id === item.ruleId) as FiscalRule | undefined;
+    let finalResult = { ...result };
+
+    // 1. Process Meta Actions for Trace and Results
+    for (const action of actions) {
+      // Add meta-rule to applied rules to show it was active
+      finalResult.appliedRules = [
+        ...finalResult.appliedRules,
+        { id: action.metaRuleId, model: `META_${action.type}`, priority: 9999 } as any,
+      ];
+
+      // Add to execution trace
+      finalResult.trace.steps.push({
+        ruleId: action.metaRuleId,
+        modelUsed: `META_${action.type}`,
+        contribution: action.value ?? 0,
+        durationMs: 0,
+        reason: action.type === 'SHORT_CIRCUIT' 
+          ? `STOP: ${action.reason}` 
+          : `${action.type} applied to: ${action.targetIds.join(', ')}`,
+      } as any);
+
+      // For INHIBITION, add targeted rules to skippedRules for better visibility
+      if (action.type === 'INHIBITION') {
+        const inhibitedRules = originalRules.filter(r => action.targetIds.includes(r.id));
+        finalResult.skippedRules = [
+          ...finalResult.skippedRules,
+          ...inhibitedRules.map(r => ({ rule: r, reason: `INHIBITED_BY_${action.metaRuleId}` }))
+        ];
+      }
+    }
+
+    // Special handling for short-circuit value
+    if (shortCircuit) {
+      finalResult.value = shortCircuit.value;
+    }
+
+    // 2. Enrich result with fiscal breakdown by category
+    const fiscalBreakdown: Record<string, number> = {};
+    for (const item of finalResult.breakdown) {
+      const rule = finalResult.appliedRules.find((r) => r.id === item.ruleId) as FiscalRule | undefined;
       const category = rule?.category ?? 'unknown';
       fiscalBreakdown[category] = (fiscalBreakdown[category] ?? 0) + (item.contribution as number);
     }
 
     return {
-      ...result,
-      meta: { ...result.meta, fiscalBreakdown },
+      ...finalResult,
+      meta: { ...finalResult.meta, fiscalBreakdown },
     };
   }
 
-  /**
-   * Evaluate simple conditions for meta-rules without DSL.
-   * Supports basic equality checks via `{ "===": [{ "var": "field" }, value] }`
-   * and `{ "in": [{ "var": "field" }, [values]] }` patterns.
-   */
-  private evaluateSimpleCondition(
-    condition: { dsl: string; value: unknown },
-    data: Record<string, unknown>,
-  ): boolean {
+  private evaluateSimpleCondition(condition: { dsl: string; value: unknown }, data: Record<string, unknown>): boolean {
     const expr = condition.value as Record<string, unknown>;
-
-    // Handle { "===": [{ "var": "field" }, value] }
     if (expr['===']) {
       const args = expr['==='] as unknown[];
       if (Array.isArray(args) && args.length === 2) {
         const left = args[0] as Record<string, string>;
-        if (left?.['var']) {
-          return data[left['var']] === args[1];
-        }
+        return left?.['var'] ? data[left['var']] === args[1] : false;
       }
     }
-
-    // Handle { "in": [{ "var": "field" }, [values]] }
     if (expr['in']) {
       const args = expr['in'] as unknown[];
       if (Array.isArray(args) && args.length === 2) {
         const left = args[0] as Record<string, string>;
-        if (left?.['var'] && Array.isArray(args[1])) {
-          return (args[1] as unknown[]).includes(data[left['var']]);
-        }
+        return (left?.['var'] && Array.isArray(args[1])) ? (args[1] as unknown[]).includes(data[left['var']]) : false;
       }
     }
-
-    // Default: condition not evaluated → treat as true
     return true;
   }
 }
-

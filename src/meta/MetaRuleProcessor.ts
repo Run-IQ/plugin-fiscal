@@ -2,132 +2,117 @@ import type { Rule } from '@run-iq/core';
 import type { FiscalRule } from '../types/fiscal-rule.js';
 import type { InhibitionParams, SubstitutionParams, ShortCircuitParams } from '../types/meta-params.js';
 
+export interface MetaAction {
+  readonly metaRuleId: string;
+  readonly type: 'INHIBITION' | 'SUBSTITUTION' | 'SHORT_CIRCUIT';
+  readonly targetIds: readonly string[];
+  readonly reason?: string;
+  readonly value?: number;
+}
+
 export interface MetaRuleResult {
-  /** Remaining rules after meta-rule processing (meta-rules removed) */
+  /** Remaining rules after meta-rule processing */
   readonly rules: ReadonlyArray<Rule>;
-  /** Short-circuit result if META_SHORT_CIRCUIT matched */
-  readonly shortCircuit?: { readonly value: number; readonly reason: string };
-  /** IDs of rules that were inhibited */
-  readonly inhibitedIds: readonly string[];
-  /** IDs of rules whose params were substituted */
-  readonly substitutedIds: readonly string[];
+  /** Granular actions performed by meta-rules */
+  readonly actions: readonly MetaAction[];
+  /** Shortcut for short-circuit result */
+  readonly shortCircuit?: { readonly value: number; readonly reason: string; readonly ruleId: string };
 }
 
 const META_MODELS = new Set(['META_INHIBITION', 'META_SUBSTITUTION', 'META_SHORT_CIRCUIT']);
 
-/**
- * Stateless processor for meta-rules.
- * Meta-rules are processed in a deterministic order:
- * 1. META_SHORT_CIRCUIT — stops everything if condition matches
- * 2. META_INHIBITION — removes matching rules
- * 3. META_SUBSTITUTION — replaces params of matching rules
- *
- * All meta-rules are then removed from the rules array — they are not calculation models.
- */
 export class MetaRuleProcessor {
-  /**
-   * Process meta-rules and return modified rule set.
-   * This is a pure function with no side effects.
-   */
   static process(
     rules: ReadonlyArray<Rule>,
     conditionResults: ReadonlyMap<string, boolean>,
   ): MetaRuleResult {
     const fiscalRules = rules as ReadonlyArray<FiscalRule>;
-
-    // Separate meta-rules from regular rules
     const metaRules = fiscalRules.filter((r) => META_MODELS.has(r.model));
     let regularRules = fiscalRules.filter((r) => !META_MODELS.has(r.model));
 
-    const inhibitedIds: string[] = [];
-    const substitutedIds: string[] = [];
+    const actions: MetaAction[] = [];
 
-    // 1. SHORT_CIRCUIT — if any active short-circuit matches, stop everything
+    // 1. SHORT_CIRCUIT
     for (const meta of metaRules.filter((r) => r.model === 'META_SHORT_CIRCUIT')) {
-      const conditionMet = conditionResults.get(meta.id) ?? true;
-      if (conditionMet) {
+      if (conditionResults.get(meta.id)) {
         const params = meta.params as unknown as ShortCircuitParams;
         return {
           rules: [],
-          shortCircuit: { value: params.value, reason: params.reason },
-          inhibitedIds: regularRules.map((r) => r.id),
-          substitutedIds: [],
+          actions: [{
+            metaRuleId: meta.id,
+            type: 'SHORT_CIRCUIT',
+            targetIds: regularRules.map(r => r.id),
+            reason: params.reason,
+            value: params.value
+          }],
+          shortCircuit: { value: params.value, reason: params.reason, ruleId: meta.id },
         };
       }
     }
 
-    // 2. INHIBITION — remove matching regular rules
+    // 2. INHIBITION
     for (const meta of metaRules.filter((r) => r.model === 'META_INHIBITION')) {
-      const conditionMet = conditionResults.get(meta.id) ?? true;
-      if (!conditionMet) continue;
+      if (!conditionResults.get(meta.id)) continue;
 
       const params = meta.params as unknown as InhibitionParams;
+      const inhibitedInThisStep: string[] = [];
+      
       regularRules = regularRules.filter((rule) => {
         const shouldInhibit = MetaRuleProcessor.matchesTarget(rule, params);
-        if (shouldInhibit) {
-          inhibitedIds.push(rule.id);
-        }
+        if (shouldInhibit) inhibitedInThisStep.push(rule.id);
         return !shouldInhibit;
       });
+
+      if (inhibitedInThisStep.length > 0) {
+        actions.push({
+          metaRuleId: meta.id,
+          type: 'INHIBITION',
+          targetIds: inhibitedInThisStep
+        });
+      }
     }
 
-    // 3. SUBSTITUTION — replace params of matching regular rules
+    // 3. SUBSTITUTION
     for (const meta of metaRules.filter((r) => r.model === 'META_SUBSTITUTION')) {
-      const conditionMet = conditionResults.get(meta.id) ?? true;
-      if (!conditionMet) continue;
+      if (!conditionResults.get(meta.id)) continue;
 
       const params = meta.params as unknown as SubstitutionParams;
+      const substitutedInThisStep: string[] = [];
+
       regularRules = regularRules.map((rule) => {
-        const shouldSubstitute = MetaRuleProcessor.matchesSubstitutionTarget(rule, params);
-        if (shouldSubstitute) {
-          substitutedIds.push(rule.id);
+        if (MetaRuleProcessor.matchesSubstitutionTarget(rule, params)) {
+          substitutedInThisStep.push(rule.id);
           return { ...rule, params: params.newParams } as unknown as FiscalRule;
         }
         return rule;
       });
+
+      if (substitutedInThisStep.length > 0) {
+        actions.push({
+          metaRuleId: meta.id,
+          type: 'SUBSTITUTION',
+          targetIds: substitutedInThisStep
+        });
+      }
     }
 
     return {
       rules: regularRules as unknown as Rule[],
-      inhibitedIds,
-      substitutedIds,
+      actions,
     };
   }
 
-  /** Check if a rule matches inhibition targeting criteria */
-  private static matchesTarget(
-    rule: FiscalRule,
-    params: InhibitionParams,
-  ): boolean {
-    if (params.targetIds && params.targetIds.includes(rule.id)) {
-      return true;
-    }
-    if (params.targetTags && params.targetTags.some((tag) => rule.tags.includes(tag))) {
-      return true;
-    }
-    if (params.targetCategories && params.targetCategories.includes(rule.category)) {
-      return true;
-    }
+  private static matchesTarget(rule: FiscalRule, params: InhibitionParams): boolean {
+    if (params.targetIds?.includes(rule.id)) return true;
+    if (params.targetTags?.some((tag) => rule.tags.includes(tag))) return true;
+    if (params.targetCategories?.includes(rule.category)) return true;
     return false;
   }
 
-  /** Check if a rule matches substitution targeting criteria */
-  private static matchesSubstitutionTarget(
-    rule: FiscalRule,
-    params: SubstitutionParams,
-  ): boolean {
-    // Must match target model
-    if (rule.model !== params.targetModel) {
-      return false;
-    }
-    // If specific IDs/tags given, match at least one
-    if (params.targetIds && params.targetIds.length > 0) {
-      return params.targetIds.includes(rule.id);
-    }
-    if (params.targetTags && params.targetTags.length > 0) {
-      return params.targetTags.some((tag) => rule.tags.includes(tag));
-    }
-    // No further filter — all rules with matching model are substituted
+  private static matchesSubstitutionTarget(rule: FiscalRule, params: SubstitutionParams): boolean {
+    if (rule.model !== params.targetModel) return false;
+    if (params.targetIds?.length) return params.targetIds.includes(rule.id);
+    if (params.targetTags?.length) return params.targetTags.some((tag) => rule.tags.includes(tag));
     return true;
   }
 }
