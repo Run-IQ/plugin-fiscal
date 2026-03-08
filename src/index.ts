@@ -1,5 +1,7 @@
 export { FiscalPlugin } from './FiscalPlugin.js';
 export { fiscalDescriptor } from './descriptor.js';
+
+export { default } from './bundle.js';
 export { FlatRateModel } from './models/FlatRateModel.js';
 export { ProgressiveBracketModel } from './models/ProgressiveBracketModel.js';
 export { MinimumTaxModel } from './models/MinimumTaxModel.js';
