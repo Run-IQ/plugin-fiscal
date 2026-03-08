@@ -130,13 +130,19 @@ export class FiscalPlugin extends BasePlugin {
 
     // Trace enrichment (Immutable approach)
     if (actions.length > 0) {
-      const metaSteps = actions.map(action => ({
-        ruleId: action.metaRuleId,
-        modelUsed: `META_${action.type}`,
-        contribution: action.value ?? 0,
-        durationMs: 0,
-        reason: `${action.type} applied`,
-      }));
+      const metaSteps = actions.map(action => {
+        let reason = `${action.type} applied`;
+        if (action.type === 'SUBSTITUTION') {
+          reason = `Params substituted for rules: ${action.targetIds.join(', ')}`;
+        }
+        return {
+          ruleId: action.metaRuleId,
+          modelUsed: `META_${action.type}`,
+          contribution: action.value ?? 0,
+          durationMs: 0,
+          reason,
+        };
+      });
       
       finalResult = {
         ...finalResult,

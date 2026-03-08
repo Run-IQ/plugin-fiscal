@@ -1,6 +1,7 @@
 import type { Rule } from '@run-iq/core';
 import type { FiscalRule } from '../types/fiscal-rule.js';
 import type { InhibitionParams, SubstitutionParams, ShortCircuitParams } from '../types/meta-params.js';
+import { deepMerge } from '../utils/index.js';
 
 export interface MetaAction {
   readonly metaRuleId: string;
@@ -92,7 +93,8 @@ export class MetaRuleProcessor {
       regularRules = regularRules.map((rule) => {
         if (MetaRuleProcessor.matchesSubstitutionTarget(rule, params)) {
           substitutedInThisStep.push(rule.id);
-          return { ...rule, params: params.newParams } as unknown as FiscalRule;
+          const mergedParams = deepMerge(rule.params as Record<string, unknown>, params.newParams);
+          return { ...rule, params: mergedParams } as unknown as FiscalRule;
         }
         return rule;
       });
