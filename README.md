@@ -61,6 +61,18 @@ All models use `decimal.js` for arithmetic — no floating-point drift.
 
 Higher score wins. Example: `NATIONAL + ORGANIZATION` (3300) beats `NATIONAL + GLOBAL` (3000).
 
+## Meta-rules
+
+Meta-rules dynamically alter the execution environment during the `beforeEvaluate` phase, before models run:
+
+| Meta-Rule | Description |
+|---|---|
+| `META_SHORT_CIRCUIT` | Immediately halts execution and returns a specified value (e.g., total exemption). |
+| `META_INHIBITION` | Removes specific rules from the execution pipeline based on IDs, categories, or tags. |
+| `META_SUBSTITUTION` | Dynamically overrides parameters of existing rules (e.g., applying a reduced rate). |
+
+Meta-rules support standard rule conditions (evaluated dynamically against input data) and are processed by the purely stateless `MetaRuleProcessor` in a deterministic order: Short-Circuit → Inhibition → Substitution.
+
 ## Plugin hooks
 
 `FiscalPlugin` implements:
