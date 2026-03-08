@@ -1,6 +1,6 @@
 {
   "name": "@run-iq/plugin-fiscal",
-  "version": "0.2.2",
+  "version": "0.2.5",
   "description": "Fiscal domain plugin for PPE — tax calculation models",
   "type": "module",
   "main": "./dist/index.cjs",
