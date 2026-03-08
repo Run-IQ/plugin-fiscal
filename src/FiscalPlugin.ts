@@ -30,23 +30,31 @@ export class FiscalPlugin extends BasePlugin {
     const fiscalRules = rules as ReadonlyArray<FiscalRule>;
     const conditionResults = new Map<string, boolean>();
 
+    // 1. Evaluate meta-rule conditions using input data
     for (const rule of fiscalRules) {
       if (META_MODELS.has(rule.model) && rule.condition) {
         conditionResults.set(rule.id, this.evaluateSimpleCondition(rule.condition, input.data));
       }
     }
 
+    // 2. Process meta-rules (short-circuit, inhibit, substitute)
     const metaResult = MetaRuleProcessor.process(rules, conditionResults);
 
-    // Filter by country context
+    // 3. Resolve priorities and handle country filtering (Strictly from meta.context)
     const country = input.meta.context?.['country'] as string | undefined;
-    const filteredRules = metaResult.rules.map((rule) => {
+
+    const processedRules = metaResult.rules.map((rule) => {
       const f = rule as FiscalRule;
       return {
         ...f,
-        priority: JurisdictionResolver.resolve(f.jurisdiction, f.scope),
+        priority: JurisdictionResolver.resolve(f.jurisdiction, f.scope) || f.priority,
       };
-    }).filter(r => !country || (r as unknown as FiscalRule).country === country);
+    }).filter(r => {
+      const fr = r as unknown as FiscalRule;
+      // Strict filtering: if rule has a country, it MUST match meta.context.country
+      if (fr.country && country && fr.country !== country) return false;
+      return true;
+    });
 
     return {
       input: {
@@ -55,10 +63,10 @@ export class FiscalPlugin extends BasePlugin {
           ...input.data,
           __fiscal_meta_actions: metaResult.actions,
           __fiscal_short_circuit: metaResult.shortCircuit,
-          __fiscal_original_rules: rules, // Preserve original rules for reporting inhibited ones
+          __fiscal_original_rules: rules,
         },
       },
-      rules: filteredRules as unknown as Rule[],
+      rules: processedRules as unknown as Rule[],
     };
   }
 
@@ -69,15 +77,20 @@ export class FiscalPlugin extends BasePlugin {
 
     let finalResult = { ...result };
 
-    // 1. Process Meta Actions for Trace and Results
-    for (const action of actions) {
-      // Add meta-rule to applied rules to show it was active
-      finalResult.appliedRules = [
-        ...finalResult.appliedRules,
-        { id: action.metaRuleId, model: `META_${action.type}`, priority: 9999 } as any,
-      ];
+    // Inject Short-Circuit result if active
+    if (shortCircuit) {
+      finalResult.value = shortCircuit.value;
+      if (!finalResult.appliedRules.some(r => r.id === shortCircuit.ruleId)) {
+        finalResult.appliedRules = [
+          ...finalResult.appliedRules,
+          { id: shortCircuit.ruleId, model: 'META_SHORT_CIRCUIT', priority: 9999 } as any
+        ];
+      }
+    }
 
-      // Add to execution trace
+    // Process each meta-action for visibility in trace and result
+    for (const action of actions) {
+      // 1. Add to trace
       finalResult.trace.steps.push({
         ruleId: action.metaRuleId,
         modelUsed: `META_${action.type}`,
@@ -88,22 +101,23 @@ export class FiscalPlugin extends BasePlugin {
           : `${action.type} applied to: ${action.targetIds.join(', ')}`,
       } as any);
 
-      // For INHIBITION, add targeted rules to skippedRules for better visibility
+      // 2. Add to appliedRules for visibility
+      if (!finalResult.appliedRules.some(r => r.id === action.metaRuleId)) {
+        finalResult.appliedRules.push({ id: action.metaRuleId, model: `META_${action.type}`, priority: 9999 } as any);
+      }
+
+      // 3. Add inhibited rules to skippedRules for clarity
       if (action.type === 'INHIBITION') {
         const inhibitedRules = originalRules.filter(r => action.targetIds.includes(r.id));
-        finalResult.skippedRules = [
-          ...finalResult.skippedRules,
-          ...inhibitedRules.map(r => ({ rule: r, reason: `INHIBITED_BY_${action.metaRuleId}` }))
-        ];
+        for (const r of inhibitedRules) {
+          if (!finalResult.skippedRules.some(s => s.rule.id === r.id)) {
+            finalResult.skippedRules.push({ rule: r, reason: `INHIBITED_BY_${action.metaRuleId}` });
+          }
+        }
       }
     }
 
-    // Special handling for short-circuit value
-    if (shortCircuit) {
-      finalResult.value = shortCircuit.value;
-    }
-
-    // 2. Enrich result with fiscal breakdown by category
+    // 4. Enrich result with fiscal breakdown by category
     const fiscalBreakdown: Record<string, number> = {};
     for (const item of finalResult.breakdown) {
       const rule = finalResult.appliedRules.find((r) => r.id === item.ruleId) as FiscalRule | undefined;
@@ -118,20 +132,16 @@ export class FiscalPlugin extends BasePlugin {
   }
 
   private evaluateSimpleCondition(condition: { dsl: string; value: unknown }, data: Record<string, unknown>): boolean {
-    const expr = condition.value as Record<string, unknown>;
+    const expr = condition.value as any;
     if (expr['===']) {
-      const args = expr['==='] as unknown[];
-      if (Array.isArray(args) && args.length === 2) {
-        const left = args[0] as Record<string, string>;
-        return left?.['var'] ? data[left['var']] === args[1] : false;
-      }
+      const [left, right] = expr['==='];
+      const val = left?.var ? data[left.var] : left;
+      return val === right;
     }
     if (expr['in']) {
-      const args = expr['in'] as unknown[];
-      if (Array.isArray(args) && args.length === 2) {
-        const left = args[0] as Record<string, string>;
-        return (left?.['var'] && Array.isArray(args[1])) ? (args[1] as unknown[]).includes(data[left['var']]) : false;
-      }
+      const [left, right] = expr['in'];
+      const val = left?.var ? data[left.var] : left;
+      return Array.isArray(right) && right.includes(val);
     }
     return true;
   }
