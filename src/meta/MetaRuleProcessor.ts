@@ -17,6 +17,10 @@ export interface MetaRuleResult {
   readonly actions: readonly MetaAction[];
   /** Shortcut for short-circuit result */
   readonly shortCircuit?: { readonly value: number; readonly reason: string; readonly ruleId: string };
+  /** IDs of rules that were inhibited (for compatibility) */
+  readonly inhibitedIds: string[];
+  /** IDs of rules that were substituted (for compatibility) */
+  readonly substitutedIds: string[];
 }
 
 const META_MODELS = new Set(['META_INHIBITION', 'META_SUBSTITUTION', 'META_SHORT_CIRCUIT']);
@@ -34,25 +38,30 @@ export class MetaRuleProcessor {
 
     // 1. SHORT_CIRCUIT
     for (const meta of metaRules.filter((r) => r.model === 'META_SHORT_CIRCUIT')) {
-      if (conditionResults.get(meta.id)) {
+      const shouldApply = conditionResults.has(meta.id) ? conditionResults.get(meta.id) : true;
+      if (shouldApply) {
         const params = meta.params as unknown as ShortCircuitParams;
+        const inhibitedIds = regularRules.map(r => r.id);
         return {
           rules: [],
           actions: [{
             metaRuleId: meta.id,
             type: 'SHORT_CIRCUIT',
-            targetIds: regularRules.map(r => r.id),
+            targetIds: inhibitedIds,
             reason: params.reason,
             value: params.value
           }],
           shortCircuit: { value: params.value, reason: params.reason, ruleId: meta.id },
+          inhibitedIds,
+          substitutedIds: []
         };
       }
     }
 
     // 2. INHIBITION
     for (const meta of metaRules.filter((r) => r.model === 'META_INHIBITION')) {
-      if (!conditionResults.get(meta.id)) continue;
+      const shouldApply = conditionResults.has(meta.id) ? conditionResults.get(meta.id) : true;
+      if (!shouldApply) continue;
 
       const params = meta.params as unknown as InhibitionParams;
       const inhibitedInThisStep: string[] = [];
@@ -74,7 +83,8 @@ export class MetaRuleProcessor {
 
     // 3. SUBSTITUTION
     for (const meta of metaRules.filter((r) => r.model === 'META_SUBSTITUTION')) {
-      if (!conditionResults.get(meta.id)) continue;
+      const shouldApply = conditionResults.has(meta.id) ? conditionResults.get(meta.id) : true;
+      if (!shouldApply) continue;
 
       const params = meta.params as unknown as SubstitutionParams;
       const substitutedInThisStep: string[] = [];
@@ -96,9 +106,19 @@ export class MetaRuleProcessor {
       }
     }
 
+    const inhibitedIds = actions
+      .filter(a => a.type === 'INHIBITION' || a.type === 'SHORT_CIRCUIT')
+      .flatMap(a => a.targetIds);
+    
+    const substitutedIds = actions
+      .filter(a => a.type === 'SUBSTITUTION')
+      .flatMap(a => a.targetIds);
+
     return {
       rules: regularRules as unknown as Rule[],
       actions,
+      inhibitedIds,
+      substitutedIds
     };
   }
 
