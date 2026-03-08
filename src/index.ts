@@ -8,6 +8,7 @@ export { FixedAmountModel } from './models/FixedAmountModel.js';
 export { CompositeModel } from './models/CompositeModel.js';
 export { JurisdictionResolver } from './jurisdiction/JurisdictionResolver.js';
 export { ScopeResolver } from './jurisdiction/ScopeResolver.js';
+export { MetaRuleProcessor } from './meta/MetaRuleProcessor.js';
 export { FiscalRuleValidator } from './validators/FiscalRuleValidator.js';
 export { ParamsValidator } from './validators/ParamsValidator.js';
 export type { FiscalRule, FiscalScope } from './types/fiscal-rule.js';
@@ -21,3 +22,8 @@ export type {
   FixedAmountParams,
   CompositeParams,
 } from './types/params.js';
+export type {
+  InhibitionParams,
+  SubstitutionParams,
+  ShortCircuitParams,
+} from './types/meta-params.js';

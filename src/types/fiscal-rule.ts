@@ -9,6 +9,11 @@ import type {
   FixedAmountParams,
   CompositeParams,
 } from './params.js';
+import type {
+  InhibitionParams,
+  SubstitutionParams,
+  ShortCircuitParams,
+} from './meta-params.js';
 
 export type FiscalScope = 'GLOBAL' | 'ORGANIZATION' | 'USER';
 
@@ -24,5 +29,8 @@ export interface FiscalRule extends Rule {
     | MinimumTaxParams
     | ThresholdParams
     | FixedAmountParams
-    | CompositeParams;
+    | CompositeParams
+    | InhibitionParams
+    | SubstitutionParams
+    | ShortCircuitParams;
 }
