@@ -4,7 +4,8 @@ import type {
   EvaluationResult, 
   Rule, 
   CalculationModel,
-  SkippedRule 
+  SkippedRule,
+  SkipReason
 } from '@run-iq/core';
 import type { FiscalRule } from './types/fiscal-rule.js';
 import { BasePlugin } from '@run-iq/plugin-sdk';
@@ -36,58 +37,56 @@ export class FiscalPlugin extends BasePlugin {
   override beforeEvaluate(input: EvaluationInput, rules: ReadonlyArray<Rule>): BeforeEvaluateResult {
     const fiscalRules = rules as ReadonlyArray<FiscalRule>;
     const conditionResults = new Map<string, boolean>();
-    const skippedRules: SkippedRule[] = [];
+    const skipped: SkippedRule[] = [];
 
-    // 1. Evaluate meta-rule conditions using input data
+    // 1. Meta-rules evaluation
     for (const rule of fiscalRules) {
       if (META_MODELS.has(rule.model) && rule.condition) {
         conditionResults.set(rule.id, this.evaluateSimpleCondition(rule.condition, input.data));
       }
     }
 
-    // 2. Process meta-rules
     const metaResult = MetaRuleProcessor.process(rules, conditionResults);
     
-    // Reporting: Inhibition actions
+    // Report Inhibitions
     for (const action of metaResult.actions) {
       if (action.type === 'INHIBITION') {
         const rulesToSkip = rules.filter(r => action.targetIds.includes(r.id));
-        skippedRules.push(...rulesToSkip.map(r => ({ 
-          rule: r, 
-          reason: `INHIBITED_BY_META_RULE: ${action.metaRuleId}` 
-        })));
+        for (const r of rulesToSkip) {
+          skipped.push({ rule: r, reason: 'INHIBITED_BY_META_RULE' as SkipReason });
+        }
       }
     }
 
-    // Reporting: Short-circuit action (stops everything else)
+    // Handle Short-Circuit
     if (metaResult.shortCircuit) {
       const others = rules.filter(r => r.id !== metaResult.shortCircuit!.ruleId);
-      skippedRules.push(...others.map(r => ({ 
-        rule: r, 
-        reason: `SHORT_CIRCUITED: Stopped by ${metaResult.shortCircuit!.ruleId} (${metaResult.shortCircuit!.reason})` 
-      })));
+      for (const r of others) {
+        skipped.push({ rule: r, reason: 'SHORT_CIRCUITED' as SkipReason });
+      }
       
       return {
         input: { ...input, data: { ...input.data, __fiscal_short_circuit: metaResult.shortCircuit } },
         rules: [], 
-        skipped: skippedRules,
+        skipped,
       };
     }
 
-    // 3. Resolve priorities and handle country filtering
+    // 2. Priorities and Country Filtering
     const country = input.meta.context?.['country'] as string | undefined;
 
-    const processedRules = metaResult.rules.map((rule) => {
-      const f = rule as FiscalRule;
-      return { ...f, priority: JurisdictionResolver.resolve(f.jurisdiction, f.scope) || f.priority };
+    const processedRules = (metaResult.rules as FiscalRule[]).map((f) => {
+      const priority = (f.priority && f.priority > 0) 
+        ? f.priority 
+        : (JurisdictionResolver.resolve(f.jurisdiction, f.scope) || 1000);
+      
+      // Map category to dominanceGroup for engine-level conflict resolution
+      return { ...f, priority, dominanceGroup: f.category } as Rule;
     }).filter(r => {
       const fr = r as unknown as FiscalRule;
       if (!fr.country) return true;
       if (fr.country !== country) {
-        skippedRules.push({ 
-          rule: r as unknown as Rule, 
-          reason: `COUNTRY_MISMATCH: Required '${fr.country}', got '${country || 'none'}'` 
-        });
+        skipped.push({ rule: r, reason: 'COUNTRY_MISMATCH' as SkipReason });
         return false;
       }
       return true;
@@ -95,8 +94,8 @@ export class FiscalPlugin extends BasePlugin {
 
     return {
       input: { ...input, data: { ...input.data, __fiscal_meta_actions: metaResult.actions } },
-      rules: processedRules as unknown as Rule[],
-      skipped: skippedRules,
+      rules: processedRules,
+      skipped,
     };
   }
 
@@ -107,27 +106,36 @@ export class FiscalPlugin extends BasePlugin {
     let finalResult = { ...result };
 
     if (shortCircuit) {
-      finalResult.value = shortCircuit.value;
-      // Ensure the short-circuit rule itself appears as applied
-      if (!finalResult.appliedRules.some(r => r.id === shortCircuit.ruleId)) {
-        finalResult.appliedRules = [
+      finalResult = {
+        ...finalResult,
+        value: shortCircuit.value,
+        appliedRules: [
           ...finalResult.appliedRules,
           { id: shortCircuit.ruleId, model: 'META_SHORT_CIRCUIT', priority: 9999 } as any
-        ];
-      }
+        ]
+      };
     }
 
-    // Add meta-actions to trace
-    for (const action of actions) {
-      finalResult.trace.steps.unshift({
+    // Trace enrichment (Immutable approach)
+    if (actions.length > 0) {
+      const metaSteps = actions.map(action => ({
         ruleId: action.metaRuleId,
         modelUsed: `META_${action.type}`,
         contribution: action.value ?? 0,
         durationMs: 0,
-        reason: `${action.type} applied to ${action.targetIds.length} rules`,
-      } as any);
+        reason: `${action.type} applied`,
+      }));
+      
+      finalResult = {
+        ...finalResult,
+        trace: {
+          ...finalResult.trace,
+          steps: [...metaSteps as any, ...finalResult.trace.steps]
+        }
+      };
     }
 
+    // Fiscal breakdown by category
     const fiscalBreakdown: Record<string, number> = {};
     for (const item of finalResult.breakdown) {
       const rule = finalResult.appliedRules.find((r) => r.id === item.ruleId) as FiscalRule | undefined;
@@ -151,9 +159,28 @@ export class FiscalPlugin extends BasePlugin {
         const val = (left && typeof left === 'object' && 'var' in left) ? data[left.var] : left;
         return Array.isArray(right) && right.includes(val);
       }
-    } catch (e) {
-      return false;
-    }
-    return true;
+      // Support basic comparison operators for thresholds
+      if (expr['<']) {
+        const [left, right] = expr['<'];
+        const val = (left && typeof left === 'object' && 'var' in left) ? data[left.var] : left;
+        return (val as number) < (right as number);
+      }
+      if (expr['>']) {
+        const [left, right] = expr['>'];
+        const val = (left && typeof left === 'object' && 'var' in left) ? data[left.var] : left;
+        return (val as number) > (right as number);
+      }
+      if (expr['<=']) {
+        const [left, right] = expr['<='];
+        const val = (left && typeof left === 'object' && 'var' in left) ? data[left.var] : left;
+        return (val as number) <= (right as number);
+      }
+      if (expr['>=']) {
+        const [left, right] = expr['>='];
+        const val = (left && typeof left === 'object' && 'var' in left) ? data[left.var] : left;
+        return (val as number) >= (right as number);
+      }
+    } catch (e) { return false; }
+    return true; // Default behavior if operator not supported (safe fail-open)
   }
 }
