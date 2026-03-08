@@ -1,6 +1,5 @@
-import { createHash } from 'node:crypto';
 import { describe, it, expect } from 'vitest';
-import { PPEEngine } from '@run-iq/core';
+import { PPEEngine, hashParams } from '@run-iq/core';
 import type { ISnapshotAdapter, Snapshot, Rule } from '@run-iq/core';
 import { JsonLogicEvaluator } from '@run-iq/dsl-jsonlogic';
 import { FiscalPlugin } from '../../src/FiscalPlugin.js';
@@ -8,7 +7,7 @@ import type { FiscalRule } from '../../src/types/fiscal-rule.js';
 import { VERSION } from '../../src/utils';
 
 function checksum(params: unknown): string {
-  return createHash('sha256').update(JSON.stringify(params)).digest('hex');
+  return hashParams(params);
 }
 
 class InMemorySnapshotAdapter implements ISnapshotAdapter {
