@@ -1,6 +1,6 @@
 {
   "name": "@run-iq/plugin-fiscal",
-  "version": "0.2.10",
+  "version": "0.2.12",
   "description": "Fiscal domain plugin for PPE — tax calculation models",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -29,8 +29,8 @@
     "lint:fix": "eslint src/ tests/ --fix && prettier --write src/ tests/"
   },
   "peerDependencies": {
-    "@run-iq/core": "^0.2.3",
-    "@run-iq/plugin-sdk": "^0.2.3"
+    "@run-iq/core": "^0.2.4",
+    "@run-iq/plugin-sdk": "^0.2.4"
   },
   "dependencies": {
     "@run-iq/dsl-jsonlogic": "^0.1.2",

@@ -5,7 +5,8 @@ import type {
   Rule, 
   CalculationModel,
   SkippedRule,
-  SkipReason
+  SkipReason,
+  PluginContext
 } from '@run-iq/core';
 import type { FiscalRule } from './types/fiscal-rule.js';
 import { BasePlugin } from '@run-iq/plugin-sdk';
@@ -24,6 +25,11 @@ const META_MODELS = new Set(['META_INHIBITION', 'META_SUBSTITUTION', 'META_SHORT
 export class FiscalPlugin extends BasePlugin {
   readonly name = '@run-iq/plugin-fiscal' as const;
   readonly version = VERSION;
+  private context?: PluginContext;
+
+  constructor() {
+    super();
+  }
 
   readonly models: CalculationModel[] = [
     new FlatRateModel(),
@@ -34,6 +40,11 @@ export class FiscalPlugin extends BasePlugin {
     new CompositeModel(),
   ];
 
+  override onInit(context: PluginContext): void {
+    super.onInit(context);
+    this.context = context;
+  }
+
   override beforeEvaluate(input: EvaluationInput, rules: ReadonlyArray<Rule>): BeforeEvaluateResult {
     const fiscalRules = rules as ReadonlyArray<FiscalRule>;
     const conditionResults = new Map<string, boolean>();
@@ -42,7 +53,8 @@ export class FiscalPlugin extends BasePlugin {
     // 1. Meta-rules evaluation
     for (const rule of fiscalRules) {
       if (META_MODELS.has(rule.model) && rule.condition) {
-        conditionResults.set(rule.id, this.evaluateSimpleCondition(rule.condition, input.data));
+        const result = this.evaluateConditionSync(rule.condition, input.data);
+        conditionResults.set(rule.id, result);
       }
     }
 
@@ -76,10 +88,7 @@ export class FiscalPlugin extends BasePlugin {
     const country = input.meta.context?.['country'] as string | undefined;
 
     const processedRules = (metaResult.rules as FiscalRule[]).map((f) => {
-      if (f.priority) {
-        console.log(`[FiscalPlugin] Rule ${f.id} has explicit priority: ${f.priority}`);
-      }
-      const priority = (f.priority && f.priority > 0) 
+      const priority = (f.priority !== undefined && f.priority !== null) 
         ? f.priority 
         : (JurisdictionResolver.resolve(f.jurisdiction, f.scope) || 1000);
       
@@ -149,41 +158,16 @@ export class FiscalPlugin extends BasePlugin {
     return { ...finalResult, meta: { ...finalResult.meta, fiscalBreakdown } };
   }
 
-  private evaluateSimpleCondition(condition: { dsl: string; value: unknown }, data: Record<string, unknown>): boolean {
-    const expr = condition.value as any;
+  private evaluateConditionSync(condition: { dsl: string; value: unknown }, data: Record<string, unknown>): boolean {
+    if (!this.context) return false;
+    
+    const evaluator = this.context.dslRegistry.get(condition.dsl);
+    if (!evaluator) return false;
+
     try {
-      if (expr['===']) {
-        const [left, right] = expr['==='];
-        const val = (left && typeof left === 'object' && 'var' in left) ? data[left.var] : left;
-        return val === right;
-      }
-      if (expr['in']) {
-        const [left, right] = expr['in'];
-        const val = (left && typeof left === 'object' && 'var' in left) ? data[left.var] : left;
-        return Array.isArray(right) && right.includes(val);
-      }
-      // Support basic comparison operators for thresholds
-      if (expr['<']) {
-        const [left, right] = expr['<'];
-        const val = (left && typeof left === 'object' && 'var' in left) ? data[left.var] : left;
-        return (val as number) < (right as number);
-      }
-      if (expr['>']) {
-        const [left, right] = expr['>'];
-        const val = (left && typeof left === 'object' && 'var' in left) ? data[left.var] : left;
-        return (val as number) > (right as number);
-      }
-      if (expr['<=']) {
-        const [left, right] = expr['<='];
-        const val = (left && typeof left === 'object' && 'var' in left) ? data[left.var] : left;
-        return (val as number) <= (right as number);
-      }
-      if (expr['>=']) {
-        const [left, right] = expr['>='];
-        const val = (left && typeof left === 'object' && 'var' in left) ? data[left.var] : left;
-        return (val as number) >= (right as number);
-      }
-    } catch (e) { return false; }
-    return true; // Default behavior if operator not supported (safe fail-open)
+      return !!evaluator.evaluate(condition.value, data);
+    } catch (e) {
+      return false;
+    }
   }
 }
