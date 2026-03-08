@@ -1,10 +1,11 @@
 import { BaseModel, SchemaValidator } from '@run-iq/plugin-sdk';
 import type { ValidationResult, Rule } from '@run-iq/core';
 import type { FixedAmountParams } from '../types/params.js';
+import { VERSION } from '../utils';
 
 export class FixedAmountModel extends BaseModel {
   readonly name = 'FIXED_AMOUNT' as const;
-  readonly version = '1.0.0';
+  readonly version = VERSION;
 
   validateParams(params: unknown): ValidationResult {
     return SchemaValidator.validate(params, {

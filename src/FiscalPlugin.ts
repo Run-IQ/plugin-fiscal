@@ -1,6 +1,6 @@
-import { BasePlugin } from '@run-iq/plugin-sdk';
 import type { BeforeEvaluateResult, EvaluationInput, EvaluationResult, Rule, CalculationModel } from '@run-iq/core';
 import type { FiscalRule } from './types/fiscal-rule.js';
+import { BasePlugin } from '@run-iq/plugin-sdk';
 import { JurisdictionResolver } from './jurisdiction/JurisdictionResolver.js';
 import { MetaRuleProcessor } from './meta/MetaRuleProcessor.js';
 import { FlatRateModel } from './models/FlatRateModel.js';
@@ -9,12 +9,13 @@ import { MinimumTaxModel } from './models/MinimumTaxModel.js';
 import { ThresholdModel } from './models/ThresholdModel.js';
 import { FixedAmountModel } from './models/FixedAmountModel.js';
 import { CompositeModel } from './models/CompositeModel.js';
+import { VERSION } from './utils';
 
 const META_MODELS = new Set(['META_INHIBITION', 'META_SUBSTITUTION', 'META_SHORT_CIRCUIT']);
 
 export class FiscalPlugin extends BasePlugin {
   readonly name = '@run-iq/plugin-fiscal' as const;
-  readonly version = '0.1.0';
+  readonly version = VERSION;
 
   readonly models: CalculationModel[] = [
     new FlatRateModel(),

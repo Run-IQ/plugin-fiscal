@@ -2,10 +2,11 @@ import Decimal from 'decimal.js';
 import { BaseModel } from '@run-iq/plugin-sdk';
 import type { ValidationResult, CalculationOutput, Rule } from '@run-iq/core';
 import type { BracketParams } from '../types/params.js';
+import { VERSION } from '../utils';
 
 export class ProgressiveBracketModel extends BaseModel {
   readonly name = 'PROGRESSIVE_BRACKET' as const;
-  readonly version = '1.0.0';
+  readonly version = VERSION;
 
   validateParams(params: unknown): ValidationResult {
     if (params === null || typeof params !== 'object') {

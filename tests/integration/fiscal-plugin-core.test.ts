@@ -5,6 +5,7 @@ import type { ISnapshotAdapter, Snapshot, Rule } from '@run-iq/core';
 import { JsonLogicEvaluator } from '@run-iq/dsl-jsonlogic';
 import { FiscalPlugin } from '../../src/FiscalPlugin.js';
 import type { FiscalRule } from '../../src/types/fiscal-rule.js';
+import { VERSION } from '../../src/utils';
 
 function checksum(params: unknown): string {
   return createHash('sha256').update(JSON.stringify(params)).digest('hex');
@@ -85,8 +86,8 @@ describe('Fiscal Plugin + Core Integration', () => {
     expect(result.value).toBe(270000);
     expect(result.appliedRules).toHaveLength(1);
     expect(result.snapshotId).toBeTruthy();
-    expect(result.dslVersions['jsonlogic']).toBe('1.0.0');
-    expect(result.pluginVersions['@run-iq/plugin-fiscal']).toBe('0.1.0');
+    expect(result.dslVersions['jsonlogic']).toBe('0.2.0');
+    expect(result.pluginVersions['@run-iq/plugin-fiscal']).toBe(VERSION);
     expect(result.trace.steps).toHaveLength(1);
   });
 

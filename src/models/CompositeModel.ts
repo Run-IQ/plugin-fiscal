@@ -7,6 +7,7 @@ import { ProgressiveBracketModel } from './ProgressiveBracketModel.js';
 import { MinimumTaxModel } from './MinimumTaxModel.js';
 import { ThresholdModel } from './ThresholdModel.js';
 import { FixedAmountModel } from './FixedAmountModel.js';
+import { VERSION } from '../utils';
 
 const SUB_MODELS: Record<string, CalculationModel> = {
   FLAT_RATE: new FlatRateModel(),
@@ -18,7 +19,7 @@ const SUB_MODELS: Record<string, CalculationModel> = {
 
 export class CompositeModel extends BaseModel {
   readonly name = 'COMPOSITE' as const;
-  readonly version = '1.0.0';
+  readonly version = VERSION;
 
   validateParams(params: unknown): ValidationResult {
     if (params === null || typeof params !== 'object') {

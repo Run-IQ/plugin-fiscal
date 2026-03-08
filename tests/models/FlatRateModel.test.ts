@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { FlatRateModel } from '../../src/models/FlatRateModel.js';
 import type { Rule } from '@run-iq/core';
+import { VERSION } from '../../src/utils/version.js';
 
 const model = new FlatRateModel();
 const dummyRule = { id: 'r', model: 'FLAT_RATE', params: {} } as unknown as Rule;
@@ -8,7 +9,7 @@ const dummyRule = { id: 'r', model: 'FLAT_RATE', params: {} } as unknown as Rule
 describe('FlatRateModel', () => {
   it('has correct name and version', () => {
     expect(model.name).toBe('FLAT_RATE');
-    expect(model.version).toBe('1.0.0');
+    expect(model.version).toBe(VERSION);
   });
 
   // TVA Togo 18%

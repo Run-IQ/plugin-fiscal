@@ -2,10 +2,11 @@ import Decimal from 'decimal.js';
 import { BaseModel, SchemaValidator } from '@run-iq/plugin-sdk';
 import type { ValidationResult, CalculationOutput, Rule } from '@run-iq/core';
 import type { MinimumTaxParams } from '../types/params.js';
+import { VERSION } from '../utils';
 
 export class MinimumTaxModel extends BaseModel {
   readonly name = 'MINIMUM_TAX' as const;
-  readonly version = '1.0.0';
+  readonly version = VERSION;
 
   validateParams(params: unknown): ValidationResult {
     return SchemaValidator.validate(params, {

@@ -2,10 +2,11 @@ import Decimal from 'decimal.js';
 import { BaseModel, SchemaValidator } from '@run-iq/plugin-sdk';
 import type { ValidationResult, Rule } from '@run-iq/core';
 import type { FlatRateParams } from '../types/params.js';
+import { VERSION } from '../utils';
 
 export class FlatRateModel extends BaseModel {
   readonly name = 'FLAT_RATE' as const;
-  readonly version = '1.0.0';
+  readonly version = VERSION;
 
   validateParams(params: unknown): ValidationResult {
     return SchemaValidator.validate(params, {
