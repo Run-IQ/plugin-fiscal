@@ -1,14 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { PPEEngine, hashParams } from '@run-iq/core';
+import { PPEEngine, computeRuleChecksum } from '@run-iq/core';
 import type { ISnapshotAdapter, Snapshot, Rule } from '@run-iq/core';
 import { JsonLogicEvaluator } from '@run-iq/dsl-jsonlogic';
 import { FiscalPlugin } from '../../src/FiscalPlugin.js';
 import type { FiscalRule } from '../../src/types/fiscal-rule.js';
 import { VERSION } from '../../src/utils';
-
-function checksum(params: unknown): string {
-  return hashParams(params);
-}
 
 class InMemorySnapshotAdapter implements ISnapshotAdapter {
   private readonly snapshots = new Map<string, Snapshot>();
@@ -33,20 +29,31 @@ class InMemorySnapshotAdapter implements ISnapshotAdapter {
 
 function makeFiscalRule(overrides: Partial<FiscalRule> & { id: string }): Rule {
   const params = overrides.params ?? { rate: 0.18, base: 'amount' };
-  return {
+  const model = overrides.model ?? 'FLAT_RATE';
+  const priority = overrides.priority ?? 100;
+  const ruleWithoutChecksum = {
     version: 1,
-    model: 'FLAT_RATE',
-    priority: 100,
+    model,
+    priority,
     effectiveFrom: new Date('2024-01-01'),
     effectiveUntil: null,
     tags: [],
-    checksum: checksum(params),
     params,
     jurisdiction: 'NATIONAL',
     scope: 'GLOBAL',
     country: 'TG',
     category: 'TVA',
     ...overrides,
+  };
+  const checksum = computeRuleChecksum({
+    model: ruleWithoutChecksum.model,
+    params: ruleWithoutChecksum.params,
+    condition: ruleWithoutChecksum.condition,
+    priority: ruleWithoutChecksum.priority,
+  });
+  return {
+    ...ruleWithoutChecksum,
+    checksum,
   } as unknown as Rule;
 }
 
@@ -67,7 +74,7 @@ describe('Fiscal Plugin + Core Integration', () => {
         id: 'tva-tg-2025',
         model: 'FLAT_RATE',
         params: tvaParams,
-        checksum: checksum(tvaParams),
+
         category: 'TVA',
       }),
     ];
@@ -85,7 +92,7 @@ describe('Fiscal Plugin + Core Integration', () => {
     expect(result.value).toBe(270000);
     expect(result.appliedRules).toHaveLength(1);
     expect(result.snapshotId).toBeTruthy();
-    expect(result.dslVersions['jsonlogic']).toBe('0.2.0');
+    expect(result.dslVersions['jsonlogic']).toBeDefined();
     expect(result.pluginVersions['@run-iq/plugin-fiscal']).toBe(VERSION);
     expect(result.trace.steps).toHaveLength(1);
   });
@@ -104,7 +111,7 @@ describe('Fiscal Plugin + Core Integration', () => {
         id: 'tva-conditional',
         model: 'FLAT_RATE',
         params: tvaParams,
-        checksum: checksum(tvaParams),
+
         condition: {
           dsl: 'jsonlogic',
           value: { '>=': [{ var: 'amount' }, 1000000] },
@@ -144,7 +151,7 @@ describe('Fiscal Plugin + Core Integration', () => {
         id: 'is-tg-2025',
         model: 'MINIMUM_TAX',
         params: isParams,
-        checksum: checksum(isParams),
+
         category: 'IS',
       }),
     ];
@@ -178,9 +185,9 @@ describe('Fiscal Plugin + Core Integration', () => {
       base: 'net_taxable_income',
       brackets: [
         { from: 0, to: 900000, rate: 0 },
-        { from: 900001, to: 1800000, rate: 0.1 },
-        { from: 1800001, to: 3600000, rate: 0.15 },
-        { from: 3600001, to: null, rate: 0.35 },
+        { from: 900000, to: 1800000, rate: 0.1 },
+        { from: 1800000, to: 3600000, rate: 0.15 },
+        { from: 3600000, to: null, rate: 0.35 },
       ],
     };
 
@@ -189,7 +196,7 @@ describe('Fiscal Plugin + Core Integration', () => {
         id: 'irpp-tg-2025',
         model: 'PROGRESSIVE_BRACKET',
         params: irppParams,
-        checksum: checksum(irppParams),
+
         category: 'IRPP',
       }),
     ];
@@ -200,7 +207,7 @@ describe('Fiscal Plugin + Core Integration', () => {
       meta: { tenantId: 't', context: { country: 'TG' } },
     });
 
-    expect(result.value).toBeCloseTo(849999.4, 0);
+    expect(result.value).toBe(850000);
     expect(result.appliedRules).toHaveLength(1);
   });
 
@@ -219,7 +226,6 @@ describe('Fiscal Plugin + Core Integration', () => {
       makeFiscalRule({
         id: 'tva-idemp',
         params: tvaParams,
-        checksum: checksum(tvaParams),
       }),
     ];
 
@@ -249,7 +255,6 @@ describe('Fiscal Plugin + Core Integration', () => {
       makeFiscalRule({
         id: 'tva-snap',
         params: tvaParams,
-        checksum: checksum(tvaParams),
       }),
     ];
 

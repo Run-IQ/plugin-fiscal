@@ -32,7 +32,12 @@ describe('MetaRuleProcessor', () => {
     it('inhibits rules by tags', () => {
       const rules = [
         makeFiscalRule({ id: 'tva-1', tags: ['tva'], category: 'TVA' }),
-        makeFiscalRule({ id: 'irpp-1', tags: ['irpp'], category: 'IRPP', model: 'PROGRESSIVE_BRACKET' }),
+        makeFiscalRule({
+          id: 'irpp-1',
+          tags: ['irpp'],
+          category: 'IRPP',
+          model: 'PROGRESSIVE_BRACKET',
+        }),
         makeFiscalRule({
           id: 'inhibit-tva',
           model: 'META_INHIBITION',
@@ -120,7 +125,11 @@ describe('MetaRuleProcessor', () => {
   describe('META_SUBSTITUTION', () => {
     it('substitutes params of matching rules by model', () => {
       const rules = [
-        makeFiscalRule({ id: 'tva-standard', model: 'FLAT_RATE', params: { rate: 0.18, base: 'revenue' } }),
+        makeFiscalRule({
+          id: 'tva-standard',
+          model: 'FLAT_RATE',
+          params: { rate: 0.18, base: 'revenue' },
+        }),
         makeFiscalRule({
           id: 'sub-essential',
           model: 'META_SUBSTITUTION',
@@ -139,21 +148,39 @@ describe('MetaRuleProcessor', () => {
 
     it('substitutes only rules matching target tags', () => {
       const rules = [
-        makeFiscalRule({ id: 'tva-standard', model: 'FLAT_RATE', tags: ['tva'], params: { rate: 0.18, base: 'revenue' } }),
-        makeFiscalRule({ id: 'tva-luxury', model: 'FLAT_RATE', tags: ['luxury'], params: { rate: 0.25, base: 'revenue' } }),
+        makeFiscalRule({
+          id: 'tva-standard',
+          model: 'FLAT_RATE',
+          tags: ['tva'],
+          params: { rate: 0.18, base: 'revenue' },
+        }),
+        makeFiscalRule({
+          id: 'tva-luxury',
+          model: 'FLAT_RATE',
+          tags: ['luxury'],
+          params: { rate: 0.25, base: 'revenue' },
+        }),
         makeFiscalRule({
           id: 'sub-tva-only',
           model: 'META_SUBSTITUTION',
-          params: { targetModel: 'FLAT_RATE', targetTags: ['tva'], newParams: { rate: 0.10, base: 'revenue' } },
+          params: {
+            targetModel: 'FLAT_RATE',
+            targetTags: ['tva'],
+            newParams: { rate: 0.1, base: 'revenue' },
+          },
         }),
       ];
 
       const result = MetaRuleProcessor.process(rules, new Map());
 
       expect(result.rules).toHaveLength(2);
-      const tvaRule = result.rules.find((r) => (r as FiscalRule).id === 'tva-standard') as FiscalRule;
-      const luxuryRule = result.rules.find((r) => (r as FiscalRule).id === 'tva-luxury') as FiscalRule;
-      expect((tvaRule.params as { rate: number }).rate).toBe(0.10);
+      const tvaRule = result.rules.find(
+        (r) => (r as FiscalRule).id === 'tva-standard',
+      ) as FiscalRule;
+      const luxuryRule = result.rules.find(
+        (r) => (r as FiscalRule).id === 'tva-luxury',
+      ) as FiscalRule;
+      expect((tvaRule.params as { rate: number }).rate).toBe(0.1);
       expect((luxuryRule.params as { rate: number }).rate).toBe(0.25); // untouched
     });
   });
@@ -201,8 +228,20 @@ describe('MetaRuleProcessor', () => {
   describe('Combined meta-rules', () => {
     it('processes inhibition + substitution together', () => {
       const rules = [
-        makeFiscalRule({ id: 'tva-1', tags: ['tva'], category: 'TVA', model: 'FLAT_RATE', params: { rate: 0.18, base: 'revenue' } }),
-        makeFiscalRule({ id: 'is-1', tags: ['is'], category: 'IS', model: 'FLAT_RATE', params: { rate: 0.27, base: 'profit' } }),
+        makeFiscalRule({
+          id: 'tva-1',
+          tags: ['tva'],
+          category: 'TVA',
+          model: 'FLAT_RATE',
+          params: { rate: 0.18, base: 'revenue' },
+        }),
+        makeFiscalRule({
+          id: 'is-1',
+          tags: ['is'],
+          category: 'IS',
+          model: 'FLAT_RATE',
+          params: { rate: 0.27, base: 'profit' },
+        }),
         makeFiscalRule({
           id: 'inhibit-tva',
           model: 'META_INHIBITION',
@@ -259,10 +298,7 @@ describe('MetaRuleProcessor', () => {
     });
 
     it('handles rules with no meta-rules', () => {
-      const rules = [
-        makeFiscalRule({ id: 'tva-1' }),
-        makeFiscalRule({ id: 'irpp-1' }),
-      ];
+      const rules = [makeFiscalRule({ id: 'tva-1' }), makeFiscalRule({ id: 'irpp-1' })];
 
       const result = MetaRuleProcessor.process(rules, new Map());
 

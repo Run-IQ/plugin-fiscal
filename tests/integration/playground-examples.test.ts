@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { PPEEngine } from '@run-iq/core';
+import { PPEEngine, computeRuleChecksum, type Rule } from '@run-iq/core';
 import { FiscalPlugin } from '../../src/FiscalPlugin.js';
 import { JsonLogicEvaluator } from '@run-iq/dsl-jsonlogic';
 import { examples } from '../../../web-platform/src/lib/examples.js';
@@ -8,18 +8,33 @@ describe('Run-IQ Engine & Fiscal Plugin Robustness', () => {
   const engine = new PPEEngine({
     plugins: [new FiscalPlugin()],
     dsls: [new JsonLogicEvaluator()],
-    onChecksumMismatch: 'skip', 
+    onChecksumMismatch: 'skip',
     strict: false,
     dryRun: true,
   });
 
-  const stressChecksum = 'be5608da31c730ba190030c617bcf0c8fee317feb90cb85af95759bf31837b00';
+  const stressChecksumP5000 = computeRuleChecksum({
+    model: 'FLAT_RATE',
+    params: { base: 'amount', rate: 0.1 },
+    priority: 5000,
+  });
+  const stressChecksumP3000 = computeRuleChecksum({
+    model: 'FLAT_RATE',
+    params: { base: 'amount', rate: 0.1 },
+    priority: 3000,
+  });
 
   it('handles regular playground examples', async () => {
-    const resIRPP = await engine.evaluate(JSON.parse(examples.irpp.rules), JSON.parse(examples.irpp.input));
+    const resIRPP = await engine.evaluate(
+      JSON.parse(examples.irpp.rules),
+      JSON.parse(examples.irpp.input),
+    );
     expect(resIRPP.value).toBe(180000);
 
-    const resVAT = await engine.evaluate(JSON.parse(examples.vat.rules), JSON.parse(examples.vat.input));
+    const resVAT = await engine.evaluate(
+      JSON.parse(examples.vat.rules),
+      JSON.parse(examples.vat.input),
+    );
     expect(resVAT.value).toBe(900000);
   });
 
@@ -38,9 +53,12 @@ describe('Run-IQ Engine & Fiscal Plugin Robustness', () => {
         priority: 5000,
         params: { base: 'amount', rate: 0.1 },
         category: 'GROUP_A',
-        effectiveFrom: new Date('2025-01-01'), effectiveUntil: null, version: 1, tags: [], 
-        checksum: stressChecksum,
-        country: 'TG'
+        effectiveFrom: new Date('2025-01-01'),
+        effectiveUntil: null,
+        version: 1,
+        tags: [],
+        checksum: stressChecksumP5000,
+        country: 'TG',
       },
       {
         id: 'rule-mid-prio-b',
@@ -48,9 +66,12 @@ describe('Run-IQ Engine & Fiscal Plugin Robustness', () => {
         priority: 3000,
         params: { base: 'amount', rate: 0.1 },
         category: 'GROUP_B',
-        effectiveFrom: new Date('2025-01-01'), effectiveUntil: null, version: 1, tags: [], 
-        checksum: stressChecksum,
-        country: 'TG'
+        effectiveFrom: new Date('2025-01-01'),
+        effectiveUntil: null,
+        version: 1,
+        tags: [],
+        checksum: stressChecksumP3000,
+        country: 'TG',
       },
       {
         id: 'rule-mid-prio-c1',
@@ -58,9 +79,12 @@ describe('Run-IQ Engine & Fiscal Plugin Robustness', () => {
         priority: 3000,
         params: { base: 'amount', rate: 0.1 },
         category: 'GROUP_C',
-        effectiveFrom: new Date('2025-01-01'), effectiveUntil: null, version: 1, tags: [], 
-        checksum: stressChecksum,
-        country: 'TG'
+        effectiveFrom: new Date('2025-01-01'),
+        effectiveUntil: null,
+        version: 1,
+        tags: [],
+        checksum: stressChecksumP3000,
+        country: 'TG',
       },
       {
         id: 'rule-mid-prio-c2-conflict',
@@ -68,31 +92,37 @@ describe('Run-IQ Engine & Fiscal Plugin Robustness', () => {
         priority: 3000,
         params: { base: 'amount', rate: 0.1 },
         category: 'GROUP_C',
-        effectiveFrom: new Date('2025-01-01'), effectiveUntil: null, version: 1, tags: [], 
-        checksum: stressChecksum,
-        country: 'TG'
+        effectiveFrom: new Date('2025-01-01'),
+        effectiveUntil: null,
+        version: 1,
+        tags: [],
+        checksum: stressChecksumP3000,
+        country: 'TG',
       },
       {
         id: 'rule-mid-prio-no-cat',
         model: 'FLAT_RATE',
         priority: 3000,
         params: { base: 'amount', rate: 0.1 },
-        effectiveFrom: new Date('2025-01-01'), effectiveUntil: null, version: 1, tags: [], 
-        checksum: stressChecksum,
-        country: 'TG'
-      }
+        effectiveFrom: new Date('2025-01-01'),
+        effectiveUntil: null,
+        version: 1,
+        tags: [],
+        checksum: stressChecksumP3000,
+        country: 'TG',
+      },
     ];
 
     const input = {
       requestId: 'stress-001',
       data: { amount: 100 },
-      meta: { 
+      meta: {
         tenantId: 't1',
-        context: { country: 'TG' }
-      }
+        context: { country: 'TG' },
+      },
     };
 
-    const result = await engine.evaluate(rules as any, input);
+    const result = await engine.evaluate(rules as Rule[], input);
 
     // EXPECTATIONS:
     // - rule-high-prio: OK (10)
@@ -101,21 +131,27 @@ describe('Run-IQ Engine & Fiscal Plugin Robustness', () => {
     // - rule-mid-prio-c2: SKIPPED (Conflict with c1)
     // - rule-mid-prio-no-cat: OK (10) - (No cat -> unique dominance group)
     // TOTAL: 40
-    
+
     expect(result.value).toBe(40);
     expect(result.appliedRules).toHaveLength(4);
-    
-    const skippedIds = result.skippedRules.map(s => s.rule.id);
+
+    const skippedIds = result.skippedRules.map((s) => s.rule.id);
     expect(skippedIds).toContain('rule-mid-prio-c2-conflict');
   });
 
   it('handles Meta-Rules correctly (Inhibition & Short-Circuit)', async () => {
-    const zf = await engine.evaluate(JSON.parse(examples.zonefranche.rules), JSON.parse(examples.zonefranche.input));
+    const zf = await engine.evaluate(
+      JSON.parse(examples.zonefranche.rules),
+      JSON.parse(examples.zonefranche.input),
+    );
     expect(zf.value).toBe(810000);
-    expect(zf.skippedRules.some(s => s.reason === 'INHIBITED_BY_META_RULE')).toBe(true);
+    expect(zf.skippedRules.some((s) => s.reason === 'INHIBITED_BY_META_RULE')).toBe(true);
 
-    const ngo = await engine.evaluate(JSON.parse(examples.ngoExempt.rules), JSON.parse(examples.ngoExempt.input));
+    const ngo = await engine.evaluate(
+      JSON.parse(examples.ngoExempt.rules),
+      JSON.parse(examples.ngoExempt.input),
+    );
     expect(ngo.value).toBe(0);
-    expect(ngo.appliedRules.some(r => r.model === 'META_SHORT_CIRCUIT')).toBe(true);
+    expect(ngo.appliedRules.some((r) => r.model === 'META_SHORT_CIRCUIT')).toBe(true);
   });
 });

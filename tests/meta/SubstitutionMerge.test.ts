@@ -30,24 +30,24 @@ function makeFiscalRule(overrides: Partial<FiscalRule> & { id: string }): Rule {
 describe('MetaRuleProcessor - Substitution Merge', () => {
   it('deep merges substituted params instead of replacing them', () => {
     const rules = [
-      makeFiscalRule({ 
-        id: 'is-progressive', 
-        model: 'PROGRESSIVE_BRACKET', 
-        params: { 
-          base: 'profit', 
+      makeFiscalRule({
+        id: 'is-progressive',
+        model: 'PROGRESSIVE_BRACKET',
+        params: {
+          base: 'profit',
           brackets: [
-            { from: 0, to: 5000000, rate: 0.1 }, 
-            { from: 5000000, to: null, rate: 0.2 }
-          ] 
-        } 
+            { from: 0, to: 5000000, rate: 0.1 },
+            { from: 5000000, to: null, rate: 0.2 },
+          ],
+        },
       }),
       makeFiscalRule({
         id: 'sub-base-only',
         model: 'META_SUBSTITUTION',
-        params: { 
-          targetModel: 'PROGRESSIVE_BRACKET', 
-          targetIds: ['is-progressive'], 
-          newParams: { base: 'revenue' } 
+        params: {
+          targetModel: 'PROGRESSIVE_BRACKET',
+          targetIds: ['is-progressive'],
+          newParams: { base: 'revenue' },
         },
       }),
     ];
@@ -56,12 +56,15 @@ describe('MetaRuleProcessor - Substitution Merge', () => {
 
     expect(result.rules).toHaveLength(1);
     const substituted = result.rules[0] as FiscalRule;
-    
+
     // Check that base was updated
-    expect((substituted.params as any).base).toBe('revenue');
-    
+    expect((substituted.params as Record<string, unknown>).base).toBe('revenue');
+
     // Check that brackets were preserved (Deep Merge behavior)
-    expect((substituted.params as any).brackets).toHaveLength(2);
-    expect((substituted.params as any).brackets[0].rate).toBe(0.1);
+    const brackets = (substituted.params as Record<string, unknown>).brackets as Array<
+      Record<string, unknown>
+    >;
+    expect(brackets).toHaveLength(2);
+    expect(brackets[0]?.rate).toBe(0.1);
   });
 });

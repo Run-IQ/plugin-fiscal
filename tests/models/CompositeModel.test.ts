@@ -34,12 +34,23 @@ describe('CompositeModel', () => {
     const params = {
       aggregation: 'SUM' as const,
       steps: [
-        { label: 'part_salarie', model: 'FLAT_RATE', params: { rate: 0.036, base: 'gross_salary' } },
-        { label: 'part_employeur', model: 'FLAT_RATE', params: { rate: 0.175, base: 'gross_salary' } },
+        {
+          label: 'part_salarie',
+          model: 'FLAT_RATE',
+          params: { rate: 0.036, base: 'gross_salary' },
+        },
+        {
+          label: 'part_employeur',
+          model: 'FLAT_RATE',
+          params: { rate: 0.175, base: 'gross_salary' },
+        },
       ],
     };
     const result = model.calculate({ gross_salary: 500000 }, dummyRule, params);
-    const detail = result.detail as { aggregation: string; steps: Array<{ model: string; label?: string; value: number }> };
+    const detail = result.detail as {
+      aggregation: string;
+      steps: Array<{ model: string; label?: string; value: number }>;
+    };
     expect(detail.aggregation).toBe('SUM');
     expect(detail.steps.length).toBe(2);
     expect(detail.steps[0].value).toBe(18000);
