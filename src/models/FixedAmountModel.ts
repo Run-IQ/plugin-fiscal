@@ -2,6 +2,7 @@ import { BaseModel, SchemaValidator } from '@run-iq/plugin-sdk';
 import type { ValidationResult, Rule } from '@run-iq/core';
 import type { FixedAmountParams } from '../types/params.js';
 import { VERSION } from '../utils';
+import Decimal from 'decimal.js';
 
 export class FixedAmountModel extends BaseModel {
   readonly name = 'FIXED_AMOUNT' as const;
@@ -20,6 +21,6 @@ export class FixedAmountModel extends BaseModel {
     params: unknown,
   ): number {
     const p = params as FixedAmountParams;
-    return p.amount;
+    return new Decimal(String(p.amount)).toNumber();
   }
 }

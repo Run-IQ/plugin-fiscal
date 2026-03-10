@@ -20,12 +20,35 @@ export class ProgressiveBracketModel extends BaseModel {
     }
     if (!Array.isArray(p['brackets']) || p['brackets'].length === 0) {
       errors.push('"brackets" must be a non-empty array');
+    } else {
+      const brackets = p['brackets'] as Array<{ from: number; to: number | null; rate: number }>;
+      for (let i = 0; i < brackets.length; i++) {
+        const b = brackets[i]!;
+        if (typeof b.rate !== 'number' || b.rate < 0 || b.rate > 1) {
+          errors.push(`bracket[${i}].rate must be between 0 and 1`);
+        }
+        if (b.to !== null && b.from > b.to) {
+          errors.push(`bracket[${i}].from (${b.from}) must be <= to (${b.to})`);
+        }
+        if (i > 0) {
+          const prev = brackets[i - 1]!;
+          if (prev.to !== null && b.from < prev.to) {
+            errors.push(
+              `bracket[${i}].from (${b.from}) overlaps with previous bracket to (${prev.to})`,
+            );
+          }
+        }
+      }
     }
 
     return errors.length > 0 ? { valid: false, errors } : { valid: true };
   }
 
-  calculate(input: Record<string, unknown>, _matchedRule: Readonly<Rule>, params: unknown): CalculationOutput {
+  calculate(
+    input: Record<string, unknown>,
+    _matchedRule: Readonly<Rule>,
+    params: unknown,
+  ): CalculationOutput {
     const p = params as BracketParams;
     const baseValue = new Decimal(String(input[p.base] ?? 0));
     let total = new Decimal(0);
