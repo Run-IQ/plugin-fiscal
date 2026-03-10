@@ -30,11 +30,11 @@ class InMemorySnapshotAdapter implements ISnapshotAdapter {
 function makeFiscalRule(overrides: Partial<FiscalRule> & { id: string }): Rule {
   const params = overrides.params ?? { rate: 0.18, base: 'amount' };
   const model = overrides.model ?? 'FLAT_RATE';
-  const priority = overrides.priority ?? 100;
+  const { checksum: _ignored, ...cleanOverrides } = overrides;
   const ruleWithoutChecksum = {
     version: 1,
     model,
-    priority,
+    priority: 100,
     effectiveFrom: new Date('2024-01-01'),
     effectiveUntil: null,
     tags: [],
@@ -43,14 +43,9 @@ function makeFiscalRule(overrides: Partial<FiscalRule> & { id: string }): Rule {
     scope: 'GLOBAL',
     country: 'TG',
     category: 'TVA',
-    ...overrides,
+    ...cleanOverrides,
   };
-  const checksum = computeRuleChecksum({
-    model: ruleWithoutChecksum.model,
-    params: ruleWithoutChecksum.params,
-    condition: ruleWithoutChecksum.condition,
-    priority: ruleWithoutChecksum.priority,
-  });
+  const checksum = computeRuleChecksum(ruleWithoutChecksum);
   return {
     ...ruleWithoutChecksum,
     checksum,

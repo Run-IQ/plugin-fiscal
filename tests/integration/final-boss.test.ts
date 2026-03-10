@@ -11,26 +11,20 @@ function createRule(
   params: Record<string, unknown>,
   extra: Record<string, unknown> = {},
 ): Rule {
-  const priority = (extra.priority as number) ?? 100;
-  const condition = extra.condition;
+  const { checksum: _ignored, ...cleanExtra } = extra;
   const ruleWithoutChecksum = {
     id,
     model,
     version: 1,
     params,
-    priority,
+    priority: (cleanExtra['priority'] as number) ?? 100,
     effectiveFrom: new Date('2025-01-01'),
     effectiveUntil: null,
     tags: [],
     country: 'TG',
-    ...extra,
+    ...cleanExtra,
   };
-  const checksum = computeRuleChecksum({
-    model: ruleWithoutChecksum.model,
-    params: ruleWithoutChecksum.params,
-    condition,
-    priority: ruleWithoutChecksum.priority as number,
-  });
+  const checksum = computeRuleChecksum(ruleWithoutChecksum);
   return {
     ...ruleWithoutChecksum,
     checksum,

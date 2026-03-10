@@ -13,16 +13,21 @@ describe('Run-IQ Engine & Fiscal Plugin Robustness', () => {
     dryRun: true,
   });
 
-  const stressChecksumP5000 = computeRuleChecksum({
-    model: 'FLAT_RATE',
-    params: { base: 'amount', rate: 0.1 },
-    priority: 5000,
-  });
-  const stressChecksumP3000 = computeRuleChecksum({
-    model: 'FLAT_RATE',
-    params: { base: 'amount', rate: 0.1 },
-    priority: 3000,
-  });
+  function makeStressRule(id: string, priority: number, extra: Record<string, unknown> = {}) {
+    const rule = {
+      id,
+      model: 'FLAT_RATE',
+      priority,
+      params: { base: 'amount', rate: 0.1 },
+      effectiveFrom: new Date('2025-01-01'),
+      effectiveUntil: null,
+      version: 1,
+      tags: [],
+      country: 'TG',
+      ...extra,
+    };
+    return { ...rule, checksum: computeRuleChecksum(rule) };
+  }
 
   it('handles regular playground examples', async () => {
     const resIRPP = await engine.evaluate(
@@ -47,70 +52,11 @@ describe('Run-IQ Engine & Fiscal Plugin Robustness', () => {
 
   it('Stress Test: Complex Conflict & Aggregation', async () => {
     const rules = [
-      {
-        id: 'rule-high-prio',
-        model: 'FLAT_RATE',
-        priority: 5000,
-        params: { base: 'amount', rate: 0.1 },
-        category: 'GROUP_A',
-        effectiveFrom: new Date('2025-01-01'),
-        effectiveUntil: null,
-        version: 1,
-        tags: [],
-        checksum: stressChecksumP5000,
-        country: 'TG',
-      },
-      {
-        id: 'rule-mid-prio-b',
-        model: 'FLAT_RATE',
-        priority: 3000,
-        params: { base: 'amount', rate: 0.1 },
-        category: 'GROUP_B',
-        effectiveFrom: new Date('2025-01-01'),
-        effectiveUntil: null,
-        version: 1,
-        tags: [],
-        checksum: stressChecksumP3000,
-        country: 'TG',
-      },
-      {
-        id: 'rule-mid-prio-c1',
-        model: 'FLAT_RATE',
-        priority: 3000,
-        params: { base: 'amount', rate: 0.1 },
-        category: 'GROUP_C',
-        effectiveFrom: new Date('2025-01-01'),
-        effectiveUntil: null,
-        version: 1,
-        tags: [],
-        checksum: stressChecksumP3000,
-        country: 'TG',
-      },
-      {
-        id: 'rule-mid-prio-c2-conflict',
-        model: 'FLAT_RATE',
-        priority: 3000,
-        params: { base: 'amount', rate: 0.1 },
-        category: 'GROUP_C',
-        effectiveFrom: new Date('2025-01-01'),
-        effectiveUntil: null,
-        version: 1,
-        tags: [],
-        checksum: stressChecksumP3000,
-        country: 'TG',
-      },
-      {
-        id: 'rule-mid-prio-no-cat',
-        model: 'FLAT_RATE',
-        priority: 3000,
-        params: { base: 'amount', rate: 0.1 },
-        effectiveFrom: new Date('2025-01-01'),
-        effectiveUntil: null,
-        version: 1,
-        tags: [],
-        checksum: stressChecksumP3000,
-        country: 'TG',
-      },
+      makeStressRule('rule-high-prio', 5000, { category: 'GROUP_A' }),
+      makeStressRule('rule-mid-prio-b', 3000, { category: 'GROUP_B' }),
+      makeStressRule('rule-mid-prio-c1', 3000, { category: 'GROUP_C' }),
+      makeStressRule('rule-mid-prio-c2-conflict', 3000, { category: 'GROUP_C' }),
+      makeStressRule('rule-mid-prio-no-cat', 3000),
     ];
 
     const input = {
