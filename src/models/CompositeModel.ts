@@ -40,7 +40,11 @@ export class CompositeModel extends BaseModel {
     return errors.length > 0 ? { valid: false, errors } : { valid: true };
   }
 
-  calculate(input: Record<string, unknown>, matchedRule: Readonly<Rule>, params: unknown): CalculationOutput {
+  calculate(
+    input: Record<string, unknown>,
+    matchedRule: Readonly<Rule>,
+    params: unknown,
+  ): CalculationOutput {
     const p = params as CompositeParams;
     const contributions: Decimal[] = [];
     const steps: Array<{

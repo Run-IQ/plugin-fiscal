@@ -9,11 +9,7 @@ import type {
   FixedAmountParams,
   CompositeParams,
 } from './params.js';
-import type {
-  InhibitionParams,
-  SubstitutionParams,
-  ShortCircuitParams,
-} from './meta-params.js';
+import type { InhibitionParams, SubstitutionParams, ShortCircuitParams } from './meta-params.js';
 
 export type FiscalScope = 'GLOBAL' | 'ORGANIZATION' | 'USER';
 

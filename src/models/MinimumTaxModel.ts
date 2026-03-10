@@ -16,7 +16,11 @@ export class MinimumTaxModel extends BaseModel {
     });
   }
 
-  calculate(input: Record<string, unknown>, _matchedRule: Readonly<Rule>, params: unknown): CalculationOutput {
+  calculate(
+    input: Record<string, unknown>,
+    _matchedRule: Readonly<Rule>,
+    params: unknown,
+  ): CalculationOutput {
     const p = params as MinimumTaxParams;
     const baseValue = new Decimal(String(input[p.base] ?? 0));
     const rate = new Decimal(String(p.rate));

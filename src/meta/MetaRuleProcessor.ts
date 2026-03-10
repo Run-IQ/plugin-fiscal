@@ -1,6 +1,10 @@
 import type { Rule } from '@run-iq/core';
 import type { FiscalRule } from '../types/fiscal-rule.js';
-import type { InhibitionParams, SubstitutionParams, ShortCircuitParams } from '../types/meta-params.js';
+import type {
+  InhibitionParams,
+  SubstitutionParams,
+  ShortCircuitParams,
+} from '../types/meta-params.js';
 import { deepMerge } from '../utils/index.js';
 
 export interface MetaAction {
@@ -17,7 +21,11 @@ export interface MetaRuleResult {
   /** Granular actions performed by meta-rules */
   readonly actions: readonly MetaAction[];
   /** Shortcut for short-circuit result */
-  readonly shortCircuit?: { readonly value: number; readonly reason: string; readonly ruleId: string };
+  readonly shortCircuit?: {
+    readonly value: number;
+    readonly reason: string;
+    readonly ruleId: string;
+  };
   /** IDs of rules that were inhibited (for compatibility) */
   readonly inhibitedIds: string[];
   /** IDs of rules that were substituted (for compatibility) */
@@ -42,19 +50,21 @@ export class MetaRuleProcessor {
       const shouldApply = conditionResults.has(meta.id) ? conditionResults.get(meta.id) : true;
       if (shouldApply) {
         const params = meta.params as unknown as ShortCircuitParams;
-        const inhibitedIds = regularRules.map(r => r.id);
+        const inhibitedIds = regularRules.map((r) => r.id);
         return {
           rules: [],
-          actions: [{
-            metaRuleId: meta.id,
-            type: 'SHORT_CIRCUIT',
-            targetIds: inhibitedIds,
-            reason: params.reason,
-            value: params.value
-          }],
+          actions: [
+            {
+              metaRuleId: meta.id,
+              type: 'SHORT_CIRCUIT',
+              targetIds: inhibitedIds,
+              reason: params.reason,
+              value: params.value,
+            },
+          ],
           shortCircuit: { value: params.value, reason: params.reason, ruleId: meta.id },
           inhibitedIds,
-          substitutedIds: []
+          substitutedIds: [],
         };
       }
     }
@@ -66,7 +76,7 @@ export class MetaRuleProcessor {
 
       const params = meta.params as unknown as InhibitionParams;
       const inhibitedInThisStep: string[] = [];
-      
+
       regularRules = regularRules.filter((rule) => {
         const shouldInhibit = MetaRuleProcessor.matchesTarget(rule, params);
         if (shouldInhibit) inhibitedInThisStep.push(rule.id);
@@ -77,7 +87,7 @@ export class MetaRuleProcessor {
         actions.push({
           metaRuleId: meta.id,
           type: 'INHIBITION',
-          targetIds: inhibitedInThisStep
+          targetIds: inhibitedInThisStep,
         });
       }
     }
@@ -103,30 +113,30 @@ export class MetaRuleProcessor {
         actions.push({
           metaRuleId: meta.id,
           type: 'SUBSTITUTION',
-          targetIds: substitutedInThisStep
+          targetIds: substitutedInThisStep,
         });
       }
     }
 
     const inhibitedIds = actions
-      .filter(a => a.type === 'INHIBITION' || a.type === 'SHORT_CIRCUIT')
-      .flatMap(a => a.targetIds);
-    
+      .filter((a) => a.type === 'INHIBITION' || a.type === 'SHORT_CIRCUIT')
+      .flatMap((a) => a.targetIds);
+
     const substitutedIds = actions
-      .filter(a => a.type === 'SUBSTITUTION')
-      .flatMap(a => a.targetIds);
+      .filter((a) => a.type === 'SUBSTITUTION')
+      .flatMap((a) => a.targetIds);
 
     return {
       rules: regularRules as unknown as Rule[],
       actions,
       inhibitedIds,
-      substitutedIds
+      substitutedIds,
     };
   }
 
   private static matchesTarget(rule: FiscalRule, params: InhibitionParams): boolean {
     if (params.targetIds?.includes(rule.id)) return true;
-    if (params.targetTags?.some((tag) => rule.tags.includes(tag))) return true;
+    if (params.targetTags?.some((tag) => rule.tags?.includes(tag))) return true;
     if (params.targetCategories?.includes(rule.category)) return true;
     return false;
   }
@@ -134,7 +144,7 @@ export class MetaRuleProcessor {
   private static matchesSubstitutionTarget(rule: FiscalRule, params: SubstitutionParams): boolean {
     if (rule.model !== params.targetModel) return false;
     if (params.targetIds?.length) return params.targetIds.includes(rule.id);
-    if (params.targetTags?.length) return params.targetTags.some((tag) => rule.tags.includes(tag));
+    if (params.targetTags?.length) return params.targetTags.some((tag) => rule.tags?.includes(tag));
     return true;
   }
 }

@@ -1,8 +1,9 @@
 import type { PluginDescriptor } from '@run-iq/plugin-sdk';
+import { VERSION } from './utils/version.js';
 
 export const fiscalDescriptor: PluginDescriptor = {
   name: '@run-iq/plugin-fiscal',
-  version: '0.1.0',
+  version: VERSION,
   domainLabel: 'fiscal',
   description:
     'Fiscal domain plugin for tax calculation. Provides 6 universal calculation models applicable to any tax system worldwide: flat rates (VAT/GST/Sales Tax), progressive brackets (income tax), minimum tax floors, threshold-based taxes, fixed levies, and composite multi-step calculations.',

@@ -17,7 +17,11 @@ export class ThresholdModel extends BaseModel {
     });
   }
 
-  calculate(input: Record<string, unknown>, _matchedRule: Readonly<Rule>, params: unknown): CalculationOutput {
+  calculate(
+    input: Record<string, unknown>,
+    _matchedRule: Readonly<Rule>,
+    params: unknown,
+  ): CalculationOutput {
     const p = params as ThresholdParams;
     const baseValue = new Decimal(String(input[p.base] ?? 0));
     const threshold = new Decimal(String(p.threshold));
@@ -45,9 +49,7 @@ export class ThresholdModel extends BaseModel {
         threshold: p.threshold,
         belowThreshold: false,
         aboveOnly: p.above_only,
-        taxableAmount: p.above_only
-          ? baseValue.minus(threshold).toNumber()
-          : baseValue.toNumber(),
+        taxableAmount: p.above_only ? baseValue.minus(threshold).toNumber() : baseValue.toNumber(),
         rate: p.rate,
       },
     };
