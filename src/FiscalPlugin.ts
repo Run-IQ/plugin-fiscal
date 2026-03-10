@@ -34,6 +34,7 @@ export class FiscalPlugin extends BasePlugin {
   readonly name = '@run-iq/plugin-fiscal' as const;
   readonly version = VERSION;
   private context?: PluginContext;
+  private metaWarnings: string[] = [];
 
   readonly models: CalculationModel[] = [
     new FlatRateModel(),
@@ -55,12 +56,15 @@ export class FiscalPlugin extends BasePlugin {
   ): BeforeEvaluateResult {
     const conditionResults = new Map<string, boolean>();
     const skipped: SkippedRule[] = [];
+    this.metaWarnings = [];
 
-    // 1. Meta-rules evaluation — pass defensive copy to DSL evaluator
-    // Use all rules (not just isFiscalRule) since meta-rules may lack fiscal fields
+    // 1. Meta-rules condition evaluation
+    // Meta-rules without conditions default to true (handled by MetaRuleProcessor).
+    // Only evaluate conditions that are explicitly set.
     for (const rule of rules) {
       if (META_MODELS.has(rule.model) && rule.condition) {
-        const result = this.evaluateConditionSync(rule.condition, { ...input.data });
+        const cond = rule.condition as { dsl: string; value: unknown };
+        const result = this.evaluateConditionSync(cond, { ...input.data }, rule.id);
         conditionResults.set(rule.id, result);
       }
     }
@@ -77,6 +81,11 @@ export class FiscalPlugin extends BasePlugin {
       }
     }
 
+    // Collect warnings from invalid meta-rules
+    for (const id of metaResult.invalidMetaRuleIds) {
+      this.metaWarnings.push(`Meta-rule "${id}": skipped due to invalid params`);
+    }
+
     // Handle Short-Circuit
     if (metaResult.shortCircuit) {
       const others = rules.filter((r) => r.id !== metaResult.shortCircuit!.ruleId);
@@ -86,7 +95,14 @@ export class FiscalPlugin extends BasePlugin {
 
       const shortCircuitData: ShortCircuitData = metaResult.shortCircuit;
       return {
-        input: { ...input, data: { ...input.data, __fiscal_short_circuit: shortCircuitData } },
+        input: {
+          ...input,
+          data: {
+            ...input.data,
+            __fiscal_short_circuit: shortCircuitData,
+            __fiscal_meta_warnings: [...this.metaWarnings],
+          },
+        },
         rules: [],
         skipped,
       };
@@ -116,7 +132,14 @@ export class FiscalPlugin extends BasePlugin {
       });
 
     return {
-      input: { ...input, data: { ...input.data, __fiscal_meta_actions: metaResult.actions } },
+      input: {
+        ...input,
+        data: {
+          ...input.data,
+          __fiscal_meta_actions: metaResult.actions,
+          __fiscal_meta_warnings: [...this.metaWarnings],
+        },
+      },
       rules: processedRules,
       skipped,
     };
@@ -125,6 +148,8 @@ export class FiscalPlugin extends BasePlugin {
   override afterEvaluate(input: EvaluationInput, result: EvaluationResult): EvaluationResult {
     const shortCircuit = input.data.__fiscal_short_circuit as ShortCircuitData | undefined;
     const actions = (input.data.__fiscal_meta_actions as readonly MetaAction[] | undefined) ?? [];
+    const warnings =
+      (input.data.__fiscal_meta_warnings as readonly string[] | undefined) ?? [];
 
     let finalResult = { ...result };
 
@@ -167,6 +192,28 @@ export class FiscalPlugin extends BasePlugin {
       };
     }
 
+    // Surface meta-rule warnings in trace
+    if (warnings.length > 0) {
+      const warningSteps: TraceStep[] = warnings.map((warning) => ({
+        ruleId: 'fiscal-plugin',
+        conditionResult: false,
+        conditionDetail: null,
+        modelUsed: 'META_WARNING',
+        inputSnapshot: null,
+        contribution: 0,
+        durationMs: 0,
+        detail: warning,
+      }));
+
+      finalResult = {
+        ...finalResult,
+        trace: {
+          ...finalResult.trace,
+          steps: [...finalResult.trace.steps, ...warningSteps],
+        },
+      };
+    }
+
     // Fiscal breakdown by category
     const fiscalBreakdown: Record<string, number> = {};
     for (const item of finalResult.breakdown) {
@@ -182,19 +229,44 @@ export class FiscalPlugin extends BasePlugin {
     return { ...finalResult, meta: { ...finalResult.meta, fiscalBreakdown } };
   }
 
+  /**
+   * Evaluates a meta-rule condition synchronously.
+   * Returns `true` (apply meta-rule) if:
+   *   - No context available (defensive: meta-rule applies by default)
+   *   - DSL evaluator not found (defensive: meta-rule applies by default)
+   *   - DSL evaluation throws (defensive: meta-rule applies by default)
+   *
+   * Rationale: A meta-rule that fails to evaluate its condition should default
+   * to applying (fail-safe). For example, if an NGO exemption meta-rule can't
+   * evaluate its condition, it's safer to exempt than to tax.
+   * Warnings are recorded in metaWarnings and surfaced in the trace.
+   */
   private evaluateConditionSync(
     condition: { dsl: string; value: unknown },
     data: Record<string, unknown>,
+    metaRuleId: string,
   ): boolean {
-    if (!this.context) return false;
+    if (!this.context) {
+      this.metaWarnings.push(`Meta-rule "${metaRuleId}": no plugin context — defaulting to true`);
+      return true;
+    }
 
     const evaluator = this.context.dslRegistry.get(condition.dsl);
-    if (!evaluator) return false;
+    if (!evaluator) {
+      this.metaWarnings.push(
+        `Meta-rule "${metaRuleId}": DSL "${condition.dsl}" not registered — defaulting to true`,
+      );
+      return true;
+    }
 
     try {
       return !!evaluator.evaluate(condition.value, data);
-    } catch {
-      return false;
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.metaWarnings.push(
+        `Meta-rule "${metaRuleId}": DSL evaluation failed — ${message}`,
+      );
+      return true;
     }
   }
 }
