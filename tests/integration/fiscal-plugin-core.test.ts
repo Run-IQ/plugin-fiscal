@@ -263,4 +263,40 @@ describe('Fiscal Plugin + Core Integration', () => {
     expect(result.snapshotId).not.toBe('cached');
     expect(result.trace.steps.length).toBeGreaterThan(0);
   });
+
+  // --- Commit 64: afterEvaluate with empty appliedRules ---
+
+  it('afterEvaluate with no matching rules returns empty fiscalBreakdown', async () => {
+    const engine = new PPEEngine({
+      plugins: [new FiscalPlugin()],
+      dsls: [new JsonLogicEvaluator()],
+      strict: false,
+      onConflict: 'first',
+    });
+
+    // Rule that won't match due to condition
+    const rules = [
+      makeFiscalRule({
+        id: 'never-match',
+        model: 'FLAT_RATE',
+        params: { rate: 0.18, base: 'amount' },
+        condition: {
+          dsl: 'jsonlogic',
+          value: { '===': [{ var: 'never_exists' }, true] },
+        },
+      }),
+    ];
+
+    const result = await engine.evaluate(rules, {
+      requestId: 'empty-applied-001',
+      data: { amount: 1000000 },
+      meta: { tenantId: 't', context: { country: 'TG' } },
+    });
+
+    expect(result.value).toBe(0);
+    expect(result.appliedRules).toHaveLength(0);
+    const breakdown = result.meta?.fiscalBreakdown as Record<string, number>;
+    expect(breakdown).toBeDefined();
+    expect(Object.keys(breakdown)).toHaveLength(0);
+  });
 });
