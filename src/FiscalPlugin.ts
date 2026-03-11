@@ -1,13 +1,14 @@
-import type {
-  BeforeEvaluateResult,
-  EvaluationInput,
-  EvaluationResult,
-  Rule,
-  CalculationModel,
-  SkippedRule,
-  SkipReason,
-  PluginContext,
-  TraceStep,
+import {
+  computeRuleChecksum,
+  type BeforeEvaluateResult,
+  type EvaluationInput,
+  type EvaluationResult,
+  type Rule,
+  type CalculationModel,
+  type SkippedRule,
+  type SkipReason,
+  type PluginContext,
+  type TraceStep,
 } from '@run-iq/core';
 import type { FiscalRule } from './types/fiscal-rule.js';
 import { BasePlugin } from '@run-iq/plugin-sdk';
@@ -34,7 +35,6 @@ export class FiscalPlugin extends BasePlugin {
   readonly name = '@run-iq/plugin-fiscal' as const;
   readonly version = VERSION;
   private context?: PluginContext;
-  private metaWarnings: string[] = [];
 
   readonly models: CalculationModel[] = [
     new FlatRateModel(),
@@ -56,7 +56,7 @@ export class FiscalPlugin extends BasePlugin {
   ): BeforeEvaluateResult {
     const conditionResults = new Map<string, boolean>();
     const skipped: SkippedRule[] = [];
-    this.metaWarnings = [];
+    const warnings: string[] = [];
 
     // 1. Meta-rules condition evaluation
     // Meta-rules without conditions default to true (handled by MetaRuleProcessor).
@@ -64,7 +64,7 @@ export class FiscalPlugin extends BasePlugin {
     for (const rule of rules) {
       if (META_MODELS.has(rule.model) && rule.condition) {
         const cond = rule.condition as { dsl: string; value: unknown };
-        const result = this.evaluateConditionSync(cond, { ...input.data }, rule.id);
+        const result = this.evaluateConditionSync(cond, { ...input.data }, rule.id, warnings);
         conditionResults.set(rule.id, result);
       }
     }
@@ -83,7 +83,26 @@ export class FiscalPlugin extends BasePlugin {
 
     // Collect warnings from invalid meta-rules
     for (const id of metaResult.invalidMetaRuleIds) {
-      this.metaWarnings.push(`Meta-rule "${id}": skipped due to invalid params`);
+      warnings.push(`Meta-rule "${id}": skipped due to invalid params`);
+    }
+
+    // Validate substituted rules' params via the model's validateParams
+    if (this.context && metaResult.substitutedIds.length > 0) {
+      const substitutedSet = new Set(metaResult.substitutedIds);
+      for (const rule of metaResult.rules) {
+        if (!substitutedSet.has(rule.id)) continue;
+        const model = this.context.modelRegistry.get(rule.model);
+        if (!model) continue;
+        // justification: BaseModel exposes validateParams but CalculationModel might not declare it
+        const modelWithValidation = model as unknown as { validateParams?: (params: unknown) => { valid: boolean; errors?: readonly string[] } };
+        if (typeof modelWithValidation.validateParams !== 'function') continue;
+        const validation = modelWithValidation.validateParams(rule.params);
+        if (!validation.valid) {
+          warnings.push(
+            `Meta-rule substitution produced invalid params for rule "${rule.id}" (model ${rule.model}): ${validation.errors?.join(', ') ?? 'unknown'}`,
+          );
+        }
+      }
     }
 
     // Handle Short-Circuit
@@ -100,7 +119,7 @@ export class FiscalPlugin extends BasePlugin {
           data: {
             ...input.data,
             __fiscal_short_circuit: shortCircuitData,
-            __fiscal_meta_warnings: [...this.metaWarnings],
+            __fiscal_meta_warnings: warnings,
           },
         },
         rules: [],
@@ -111,6 +130,8 @@ export class FiscalPlugin extends BasePlugin {
     // 2. Priorities and Country Filtering
     const country = input.meta.context?.['country'] as string | undefined;
 
+    const substitutedSet = new Set(metaResult.substitutedIds);
+
     const processedRules = (metaResult.rules as FiscalRule[])
       .map((f) => {
         const priority =
@@ -119,7 +140,13 @@ export class FiscalPlugin extends BasePlugin {
             : JurisdictionResolver.resolve(f.jurisdiction, f.scope) || 1000;
 
         // Map category to dominanceGroup for engine-level conflict resolution
-        return { ...f, priority, dominanceGroup: f.category } as Rule;
+        const enriched = { ...f, priority, dominanceGroup: f.category };
+
+        // Recalculate checksum for substituted rules (params changed by META_SUBSTITUTION)
+        if (substitutedSet.has(f.id)) {
+          return { ...enriched, checksum: computeRuleChecksum(enriched) } as Rule;
+        }
+        return enriched as Rule;
       })
       .filter((r) => {
         const fr = r as unknown as FiscalRule;
@@ -137,7 +164,7 @@ export class FiscalPlugin extends BasePlugin {
         data: {
           ...input.data,
           __fiscal_meta_actions: metaResult.actions,
-          __fiscal_meta_warnings: [...this.metaWarnings],
+          __fiscal_meta_warnings: warnings,
         },
       },
       rules: processedRules,
@@ -245,15 +272,16 @@ export class FiscalPlugin extends BasePlugin {
     condition: { dsl: string; value: unknown },
     data: Record<string, unknown>,
     metaRuleId: string,
+    warnings: string[],
   ): boolean {
     if (!this.context) {
-      this.metaWarnings.push(`Meta-rule "${metaRuleId}": no plugin context — defaulting to true`);
+      warnings.push(`Meta-rule "${metaRuleId}": no plugin context — defaulting to true`);
       return true;
     }
 
     const evaluator = this.context.dslRegistry.get(condition.dsl);
     if (!evaluator) {
-      this.metaWarnings.push(
+      warnings.push(
         `Meta-rule "${metaRuleId}": DSL "${condition.dsl}" not registered — defaulting to true`,
       );
       return true;
@@ -263,7 +291,7 @@ export class FiscalPlugin extends BasePlugin {
       return !!evaluator.evaluate(condition.value, data);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      this.metaWarnings.push(
+      warnings.push(
         `Meta-rule "${metaRuleId}": DSL evaluation failed — ${message}`,
       );
       return true;
