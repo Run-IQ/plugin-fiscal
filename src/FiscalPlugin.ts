@@ -134,6 +134,12 @@ export class FiscalPlugin extends BasePlugin {
 
     const processedRules = (metaResult.rules as FiscalRule[])
       .map((f) => {
+        // Priority override: if the rule has an explicit priority, it bypasses
+        // the jurisdiction-based resolution (JurisdictionResolver). This allows
+        // rule authors to override the default NATIONAL>REGIONAL>MUNICIPAL
+        // hierarchy when a specific rule must take precedence regardless of its
+        // jurisdiction level — e.g., a municipal exemption that must outrank
+        // national taxation in a free-trade zone.
         const priority =
           f.priority !== undefined && f.priority !== null
             ? f.priority
