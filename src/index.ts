@@ -1,18 +1,9 @@
+// Public API — FiscalPlugin is the sole entry point for consumers
 export { FiscalPlugin } from './FiscalPlugin.js';
 export { fiscalDescriptor } from './descriptor.js';
-
 export { default } from './bundle.js';
-export { FlatRateModel } from './models/FlatRateModel.js';
-export { ProgressiveBracketModel } from './models/ProgressiveBracketModel.js';
-export { MinimumTaxModel } from './models/MinimumTaxModel.js';
-export { ThresholdModel } from './models/ThresholdModel.js';
-export { FixedAmountModel } from './models/FixedAmountModel.js';
-export { CompositeModel } from './models/CompositeModel.js';
-export { JurisdictionResolver } from './jurisdiction/JurisdictionResolver.js';
-export { ScopeResolver } from './jurisdiction/ScopeResolver.js';
-export { MetaRuleProcessor } from './meta/MetaRuleProcessor.js';
-export { FiscalRuleValidator } from './validators/FiscalRuleValidator.js';
-export { ParamsValidator } from './validators/ParamsValidator.js';
+
+// Public types — domain interfaces for consumers to type rule definitions
 export type { FiscalRule, FiscalScope } from './types/fiscal-rule.js';
 export type { FiscalJurisdiction } from './types/jurisdiction.js';
 export type { FiscalCalculationModel } from './types/models.js';
