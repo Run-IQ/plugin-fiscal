@@ -1,12 +1,22 @@
 import Decimal from 'decimal.js';
 import { BaseModel } from '@run-iq/plugin-sdk';
-import type { ValidationResult, CalculationOutput, Rule } from '@run-iq/core';
+import type { ValidationResult, CalculationOutput, ParamDescriptor, Rule } from '@run-iq/core';
 import type { BracketParams } from '../types/params.js';
 import { VERSION } from '../utils';
 
 export class ProgressiveBracketModel extends BaseModel {
   readonly name = 'PROGRESSIVE_BRACKET' as const;
   readonly version = VERSION;
+
+  describeParams(): Record<string, ParamDescriptor> {
+    return {
+      base: { type: 'string', description: 'Name of the input field to use as tax base (e.g. "income")' },
+      brackets: {
+        type: 'Array<{ from: number, to: number | null, rate: number }>',
+        description: 'Contiguous tax brackets. Each bracket taxes only the portion within [from, to). Brackets must be ordered ascending by "from", each starting where the previous ends. The last bracket should have "to": null for uncapped top bracket. Rate must be between 0 and 1.',
+      },
+    };
+  }
 
   validateParams(params: unknown): ValidationResult {
     if (params === null || typeof params !== 'object') {

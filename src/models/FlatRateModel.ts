@@ -1,6 +1,6 @@
 import Decimal from 'decimal.js';
 import { BaseModel, SchemaValidator } from '@run-iq/plugin-sdk';
-import type { ValidationResult, Rule } from '@run-iq/core';
+import type { ValidationResult, ParamDescriptor, Rule } from '@run-iq/core';
 import type { FlatRateParams } from '../types/params.js';
 import { VERSION } from '../utils';
 
@@ -13,6 +13,13 @@ export class FlatRateModel extends BaseModel {
       rate: { type: 'number', min: 0, max: 1 },
       base: { type: 'string' },
     });
+  }
+
+  describeParams(): Record<string, ParamDescriptor> {
+    return {
+      rate: { type: 'number (0–1)', description: 'Tax rate to apply to the base value (e.g. 0.18 for 18% VAT)' },
+      base: { type: 'string', description: 'Name of the input field to use as tax base (e.g. "revenue", "income")' },
+    };
   }
 
   calculate(input: Record<string, unknown>, _matchedRule: Readonly<Rule>, params: unknown): number {

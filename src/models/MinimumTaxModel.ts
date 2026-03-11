@@ -1,12 +1,20 @@
 import Decimal from 'decimal.js';
 import { BaseModel, SchemaValidator } from '@run-iq/plugin-sdk';
-import type { ValidationResult, CalculationOutput, Rule } from '@run-iq/core';
+import type { ValidationResult, CalculationOutput, ParamDescriptor, Rule } from '@run-iq/core';
 import type { MinimumTaxParams } from '../types/params.js';
 import { VERSION } from '../utils';
 
 export class MinimumTaxModel extends BaseModel {
   readonly name = 'MINIMUM_TAX' as const;
   readonly version = VERSION;
+
+  describeParams(): Record<string, ParamDescriptor> {
+    return {
+      rate: { type: 'number (0–1)', description: 'Proportional tax rate applied to the base value' },
+      base: { type: 'string', description: 'Name of the input field to use as tax base (e.g. "revenue")' },
+      minimum: { type: 'number (>= 0)', description: 'Minimum tax amount. Result is MAX(base × rate, minimum)' },
+    };
+  }
 
   validateParams(params: unknown): ValidationResult {
     return SchemaValidator.validate(params, {

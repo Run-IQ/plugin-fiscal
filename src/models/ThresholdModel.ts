@@ -1,12 +1,21 @@
 import Decimal from 'decimal.js';
 import { BaseModel, SchemaValidator } from '@run-iq/plugin-sdk';
-import type { ValidationResult, CalculationOutput, Rule } from '@run-iq/core';
+import type { ValidationResult, CalculationOutput, ParamDescriptor, Rule } from '@run-iq/core';
 import type { ThresholdParams } from '../types/params.js';
 import { VERSION } from '../utils';
 
 export class ThresholdModel extends BaseModel {
   readonly name = 'THRESHOLD_BASED' as const;
   readonly version = VERSION;
+
+  describeParams(): Record<string, ParamDescriptor> {
+    return {
+      base: { type: 'string', description: 'Name of the input field to use as tax base' },
+      threshold: { type: 'number (>= 0)', description: 'Value below which no tax is applied' },
+      rate: { type: 'number (0–1)', description: 'Tax rate applied when base exceeds the threshold' },
+      above_only: { type: 'boolean', description: 'If true, tax only the amount above the threshold. If false, tax the entire base when threshold is exceeded.' },
+    };
+  }
 
   validateParams(params: unknown): ValidationResult {
     return SchemaValidator.validate(params, {
