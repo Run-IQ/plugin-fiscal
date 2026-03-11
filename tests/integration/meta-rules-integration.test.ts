@@ -363,4 +363,366 @@ describe('Meta-Rules Integration (Engine + FiscalPlugin + DSL)', () => {
     expect(metaStep).toBeDefined();
     expect(metaStep!.ruleId).toBe('inhibit-tva');
   });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // ─── SUBSTITUTION — Full Integration Tests ─────────────────────
+  // ═══════════════════════════════════════════════════════════════════
+
+  describe('Substitution — end-to-end with real calculations', () => {
+    it('substitution changes FLAT_RATE rate → different computed value', async () => {
+      const rules = [
+        createRule('tva-1', 'FLAT_RATE', { base: 'revenue', rate: 0.18 }, { category: 'TVA', priority: 3000 }),
+        createRule(
+          'sub-tva-reduced',
+          'META_SUBSTITUTION',
+          { targetModel: 'FLAT_RATE', targetIds: ['tva-1'], newParams: { rate: 0.05 } },
+          { priority: 9000, category: 'META' },
+        ),
+      ];
+
+      const result = await engine.evaluate(rules, {
+        ...baseInput,
+        requestId: 'sub-calc-001',
+      });
+
+      // 5M * 5% = 250,000 (not 900,000 at 18%)
+      expect(result.value).toBe(250000);
+      expect(result.appliedRules).toHaveLength(1);
+    });
+
+    it('substitution changes PROGRESSIVE_BRACKET brackets → different computed value', async () => {
+      const originalBrackets = [
+        { from: 0, to: 900000, rate: 0 },
+        { from: 900000, to: 1800000, rate: 0.1 },
+        { from: 1800000, to: 3600000, rate: 0.15 },
+        { from: 3600000, to: null, rate: 0.35 },
+      ];
+
+      const newBrackets = [
+        { from: 0, to: 1000000, rate: 0 },
+        { from: 1000000, to: null, rate: 0.10 },
+      ];
+
+      const rules = [
+        createRule(
+          'irpp-1',
+          'PROGRESSIVE_BRACKET',
+          { base: 'taxable_salary', brackets: originalBrackets },
+          { category: 'IRPP', priority: 3000 },
+        ),
+        createRule(
+          'sub-irpp-brackets',
+          'META_SUBSTITUTION',
+          { targetModel: 'PROGRESSIVE_BRACKET', newParams: { brackets: newBrackets } },
+          { priority: 9000, category: 'META' },
+        ),
+      ];
+
+      const input = {
+        requestId: 'sub-bracket-001',
+        data: { taxable_salary: 5000000 },
+        meta: { tenantId: 'test', context: { country: 'TG' } },
+      };
+
+      const result = await engine.evaluate(rules, input);
+
+      // With new brackets: 0-1M (0%) + 1M-5M (10%) = 400,000
+      expect(result.value).toBe(400000);
+    });
+
+    it('conditional substitution with DSL: applies only when condition is true', async () => {
+      const rules = [
+        createRule('tva-1', 'FLAT_RATE', { base: 'revenue', rate: 0.18 }, { category: 'TVA', priority: 3000 }),
+        createRule(
+          'sub-zf-tva',
+          'META_SUBSTITUTION',
+          { targetModel: 'FLAT_RATE', targetIds: ['tva-1'], newParams: { rate: 0.05 } },
+          {
+            priority: 9000,
+            category: 'META',
+            condition: { dsl: 'jsonlogic', value: { '===': [{ var: 'zone' }, 'zone_franche'] } },
+          },
+        ),
+      ];
+
+      // Without zone_franche → substitution disabled
+      const resultNormal = await engine.evaluate(rules, {
+        requestId: 'sub-cond-false-001',
+        data: { revenue: 5000000, zone: 'standard' },
+        meta: { tenantId: 'test', context: { country: 'TG' } },
+      });
+      expect(resultNormal.value).toBe(900000); // 5M * 18%
+
+      // With zone_franche → substitution applied
+      const resultZF = await engine.evaluate(rules, {
+        requestId: 'sub-cond-true-001',
+        data: { revenue: 5000000, zone: 'zone_franche' },
+        meta: { tenantId: 'test', context: { country: 'TG' } },
+      });
+      expect(resultZF.value).toBe(250000); // 5M * 5%
+    });
+
+    it('substitution on COMPOSITE model: replaces steps, changes computation', async () => {
+      const rules = [
+        createRule(
+          'cnss',
+          'COMPOSITE',
+          {
+            aggregation: 'SUM',
+            steps: [
+              { model: 'FLAT_RATE', params: { base: 'gross_salary', rate: 0.04 } },
+              { model: 'FLAT_RATE', params: { base: 'gross_salary', rate: 0.18 } },
+            ],
+          },
+          { category: 'CNSS', priority: 3000 },
+        ),
+        createRule(
+          'sub-cnss',
+          'META_SUBSTITUTION',
+          {
+            targetModel: 'COMPOSITE',
+            newParams: {
+              steps: [
+                { model: 'FLAT_RATE', params: { base: 'gross_salary', rate: 0.05 } },
+                { model: 'FLAT_RATE', params: { base: 'gross_salary', rate: 0.20 } },
+              ],
+            },
+          },
+          { priority: 9000, category: 'META' },
+        ),
+      ];
+
+      const input = {
+        requestId: 'sub-composite-001',
+        data: { gross_salary: 1000000 },
+        meta: { tenantId: 'test', context: { country: 'TG' } },
+      };
+
+      const result = await engine.evaluate(rules, input);
+
+      // New steps: 1M * 5% + 1M * 20% = 50k + 200k = 250k
+      expect(result.value).toBe(250000);
+    });
+
+    it('substitution changes base field → computes from different input field', async () => {
+      const rules = [
+        createRule(
+          'tva-1',
+          'FLAT_RATE',
+          { base: 'revenue', rate: 0.18 },
+          { category: 'TVA', priority: 3000 },
+        ),
+        createRule(
+          'sub-change-base',
+          'META_SUBSTITUTION',
+          { targetModel: 'FLAT_RATE', targetIds: ['tva-1'], newParams: { base: 'profit' } },
+          { priority: 9000, category: 'META' },
+        ),
+      ];
+
+      const result = await engine.evaluate(rules, {
+        ...baseInput,
+        requestId: 'sub-base-change-001',
+      });
+
+      // Computes on profit (1M) instead of revenue (5M)
+      // 1M * 18% = 180,000
+      expect(result.value).toBe(180000);
+    });
+
+    it('multiple substitutions on same rule in full engine: last one wins on conflicting keys', async () => {
+      const rules = [
+        createRule('tva-1', 'FLAT_RATE', { base: 'revenue', rate: 0.18 }, { category: 'TVA', priority: 3000 }),
+        // First sub (high prio): rate → 0.10
+        createRule(
+          'sub-1',
+          'META_SUBSTITUTION',
+          { targetModel: 'FLAT_RATE', newParams: { rate: 0.10 } },
+          { priority: 9000, category: 'META' },
+        ),
+        // Second sub (lower prio): rate → 0.02
+        createRule(
+          'sub-2',
+          'META_SUBSTITUTION',
+          { targetModel: 'FLAT_RATE', newParams: { rate: 0.02 } },
+          { priority: 5000, category: 'META' },
+        ),
+      ];
+
+      const result = await engine.evaluate(rules, {
+        ...baseInput,
+        requestId: 'sub-stack-001',
+      });
+
+      // sub-1 runs first (prio 9000), sub-2 overrides (prio 5000)
+      // Final rate = 0.02 → 5M * 2% = 100,000
+      expect(result.value).toBe(100000);
+    });
+
+    it('substitution trace step is present in result', async () => {
+      const rules = [
+        createRule('tva-1', 'FLAT_RATE', { base: 'revenue', rate: 0.18 }, { category: 'TVA', priority: 3000 }),
+        createRule(
+          'sub-tva',
+          'META_SUBSTITUTION',
+          { targetModel: 'FLAT_RATE', newParams: { rate: 0.05 } },
+          { priority: 9000, category: 'META' },
+        ),
+      ];
+
+      const result = await engine.evaluate(rules, {
+        ...baseInput,
+        requestId: 'sub-trace-001',
+      });
+
+      const subStep = result.trace.steps.find((s) => s.modelUsed === 'META_SUBSTITUTION');
+      expect(subStep).toBeDefined();
+      expect(subStep!.ruleId).toBe('sub-tva');
+      expect(subStep!.detail).toContain('tva-1');
+    });
+
+    it('Zone Franche real-world: inhibit TVA+IS, substitute IRPP brackets', async () => {
+      const rules = [
+        createRule('tva', 'FLAT_RATE', { base: 'revenue', rate: 0.18 }, { category: 'TVA', priority: 3000 }),
+        createRule('is', 'FLAT_RATE', { base: 'profit', rate: 0.27 }, { category: 'IS', priority: 3000 }),
+        createRule(
+          'irpp',
+          'PROGRESSIVE_BRACKET',
+          {
+            base: 'taxable_salary',
+            brackets: [
+              { from: 0, to: 500000, rate: 0 },
+              { from: 500000, to: 1000000, rate: 0.1 },
+              { from: 1000000, to: null, rate: 0.2 },
+            ],
+          },
+          { category: 'IRPP', priority: 3000 },
+        ),
+        // Inhibit TVA and IS
+        createRule(
+          'meta-zf-inhibit',
+          'META_INHIBITION',
+          { targetCategories: ['TVA', 'IS'] },
+          {
+            priority: 9500,
+            category: 'META',
+            condition: { dsl: 'jsonlogic', value: { '===': [{ var: 'zone' }, 'zone_franche'] } },
+          },
+        ),
+        // Substitute IRPP with reduced brackets
+        createRule(
+          'meta-zf-sub',
+          'META_SUBSTITUTION',
+          {
+            targetModel: 'PROGRESSIVE_BRACKET',
+            newParams: {
+              brackets: [
+                { from: 0, to: 1000000, rate: 0 },
+                { from: 1000000, to: null, rate: 0.05 },
+              ],
+            },
+          },
+          {
+            priority: 9000,
+            category: 'META',
+            condition: { dsl: 'jsonlogic', value: { '===': [{ var: 'zone' }, 'zone_franche'] } },
+          },
+        ),
+      ];
+
+      const result = await engine.evaluate(rules, {
+        requestId: 'zf-combined-001',
+        data: { revenue: 10000000, profit: 3000000, taxable_salary: 5000000, zone: 'zone_franche' },
+        meta: { tenantId: 'test', context: { country: 'TG' } },
+      });
+
+      // TVA inhibited, IS inhibited, IRPP brackets substituted
+      // IRPP: 0-1M (0%) + 1M-5M (5%) = 200,000
+      expect(result.value).toBe(200000);
+      expect(result.appliedRules).toHaveLength(1);
+      expect(result.skippedRules.filter((s) => s.reason === 'INHIBITED_BY_META_RULE')).toHaveLength(2);
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // ─── Integrity & Safety Fixes ──────────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════
+
+  describe('Substitution — checksum recalculation', () => {
+    it('substituted rule in snapshot has valid checksum matching its new params', async () => {
+      const rules = [
+        createRule('tva-1', 'FLAT_RATE', { base: 'revenue', rate: 0.18 }, { category: 'TVA', priority: 3000 }),
+        createRule(
+          'sub-tva',
+          'META_SUBSTITUTION',
+          { targetModel: 'FLAT_RATE', targetIds: ['tva-1'], newParams: { rate: 0.05 } },
+          { priority: 9000, category: 'META' },
+        ),
+      ];
+
+      const result = await engine.evaluate(rules, {
+        ...baseInput,
+        requestId: 'checksum-recalc-001',
+      });
+
+      // The applied rule should have a valid checksum that matches its substituted params
+      const appliedRule = result.appliedRules.find((r) => r.id === 'tva-1');
+      expect(appliedRule).toBeDefined();
+      const expectedChecksum = computeRuleChecksum(appliedRule!);
+      expect(appliedRule!.checksum).toBe(expectedChecksum);
+    });
+
+    it('substituted rule checksum differs from original rule checksum', async () => {
+      const originalRule = createRule(
+        'tva-1', 'FLAT_RATE', { base: 'revenue', rate: 0.18 }, { category: 'TVA', priority: 3000 },
+      );
+      const originalChecksum = originalRule.checksum;
+
+      const rules = [
+        originalRule,
+        createRule(
+          'sub-tva',
+          'META_SUBSTITUTION',
+          { targetModel: 'FLAT_RATE', targetIds: ['tva-1'], newParams: { rate: 0.05 } },
+          { priority: 9000, category: 'META' },
+        ),
+      ];
+
+      const result = await engine.evaluate(rules, {
+        ...baseInput,
+        requestId: 'checksum-diff-001',
+      });
+
+      const appliedRule = result.appliedRules.find((r) => r.id === 'tva-1');
+      expect(appliedRule).toBeDefined();
+      // Checksum changed because params changed
+      expect(appliedRule!.checksum).not.toBe(originalChecksum);
+    });
+  });
+
+  describe('Substitution — params validation warning', () => {
+    it('substitution producing invalid params emits warning in trace', async () => {
+      const rules = [
+        createRule('tva-1', 'FLAT_RATE', { base: 'revenue', rate: 0.18 }, { category: 'TVA', priority: 3000 }),
+        createRule(
+          'sub-invalid-rate',
+          'META_SUBSTITUTION',
+          { targetModel: 'FLAT_RATE', targetIds: ['tva-1'], newParams: { rate: -0.5 } },
+          { priority: 9000, category: 'META' },
+        ),
+      ];
+
+      const result = await engine.evaluate(rules, {
+        ...baseInput,
+        requestId: 'invalid-sub-params-001',
+      });
+
+      // Warning should be in trace
+      const warningStep = result.trace.steps.find(
+        (s) => s.modelUsed === 'META_WARNING' && s.detail?.includes('tva-1'),
+      );
+      expect(warningStep).toBeDefined();
+      expect(warningStep!.detail).toContain('invalid params');
+    });
+  });
 });
