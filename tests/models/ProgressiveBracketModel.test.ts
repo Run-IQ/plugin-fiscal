@@ -116,4 +116,87 @@ describe('ProgressiveBracketModel', () => {
   it('rejects invalid params: not an object', () => {
     expect(model.validateParams(null).valid).toBe(false);
   });
+
+  // --- Commit 62: bracket validation edge cases ---
+
+  it('rejects brackets in wrong order (descending)', () => {
+    const result = model.validateParams({
+      base: 'income',
+      brackets: [
+        { from: 900000, to: 1800000, rate: 0.1 },
+        { from: 0, to: 900000, rate: 0 },
+      ],
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors?.some((e) => e.includes('overlaps'))).toBe(true);
+  });
+
+  it('rejects overlapping brackets', () => {
+    const result = model.validateParams({
+      base: 'income',
+      brackets: [
+        { from: 0, to: 1000000, rate: 0 },
+        { from: 500000, to: 2000000, rate: 0.1 },
+      ],
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors?.some((e) => e.includes('overlaps'))).toBe(true);
+  });
+
+  it('rejects bracket with negative rate', () => {
+    const result = model.validateParams({
+      base: 'income',
+      brackets: [{ from: 0, to: 900000, rate: -0.1 }],
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors?.some((e) => e.includes('rate'))).toBe(true);
+  });
+
+  it('rejects bracket with rate > 1', () => {
+    const result = model.validateParams({
+      base: 'income',
+      brackets: [{ from: 0, to: 900000, rate: 1.5 }],
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors?.some((e) => e.includes('rate'))).toBe(true);
+  });
+
+  it('rejects bracket where from > to', () => {
+    const result = model.validateParams({
+      base: 'income',
+      brackets: [{ from: 1000000, to: 500000, rate: 0.1 }],
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors?.some((e) => e.includes('must be <= to'))).toBe(true);
+  });
+
+  it('accepts single bracket covering all income', () => {
+    const result = model.validateParams({
+      base: 'income',
+      brackets: [{ from: 0, to: null, rate: 0.2 }],
+    });
+    expect(result.valid).toBe(true);
+  });
+
+  it('single bracket covering all income calculates correctly', () => {
+    const params = {
+      base: 'income',
+      brackets: [{ from: 0, to: null, rate: 0.2 }],
+    };
+    const result = model.calculate({ income: 5000000 }, dummyRule, params);
+    expect(result.value).toBe(1000000);
+  });
+
+  it('accepts contiguous brackets with exact boundaries', () => {
+    const result = model.validateParams({
+      base: 'income',
+      brackets: [
+        { from: 0, to: 900000, rate: 0 },
+        { from: 900000, to: 1800000, rate: 0.1 },
+        { from: 1800000, to: 3600000, rate: 0.15 },
+        { from: 3600000, to: null, rate: 0.35 },
+      ],
+    });
+    expect(result.valid).toBe(true);
+  });
 });

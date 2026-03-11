@@ -53,4 +53,11 @@ describe('FlatRateModel', () => {
   it('rejects invalid params: missing base', () => {
     expect(model.validateParams({ rate: 0.18 }).valid).toBe(false);
   });
+
+  // --- Commit 64: model edge cases ---
+
+  it('negative base value produces negative result', () => {
+    const result = model.calculate({ amount: -1000000 }, dummyRule, { rate: 0.18, base: 'amount' });
+    expect(result).toBe(-180000);
+  });
 });

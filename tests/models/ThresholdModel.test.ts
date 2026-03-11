@@ -55,4 +55,13 @@ describe('ThresholdModel', () => {
   it('rejects invalid params', () => {
     expect(model.validateParams({ base: 'x' }).valid).toBe(false);
   });
+
+  // --- Commit 64: model edge cases ---
+
+  it('negative value → below threshold, returns 0', () => {
+    const params = { base: 'revenue', threshold: 5000000, rate: 0.05, above_only: true };
+    const result = model.calculate({ revenue: -1000000 }, dummyRule, params);
+    expect(result.value).toBe(0);
+    expect((result.detail as { belowThreshold: boolean }).belowThreshold).toBe(true);
+  });
 });

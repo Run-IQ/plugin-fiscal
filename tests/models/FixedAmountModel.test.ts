@@ -28,4 +28,16 @@ describe('FixedAmountModel', () => {
   it('rejects invalid params: missing currency', () => {
     expect(model.validateParams({ amount: 100 }).valid).toBe(false);
   });
+
+  // --- Commit 64: model edge cases ---
+
+  it('determinism: same call x3 = same result', () => {
+    const params = { amount: 50000, currency: 'XOF' };
+    const r1 = model.calculate({}, dummyRule, params);
+    const r2 = model.calculate({}, dummyRule, params);
+    const r3 = model.calculate({}, dummyRule, params);
+    expect(r1).toBe(r2);
+    expect(r2).toBe(r3);
+    expect(r1).toBe(50000);
+  });
 });

@@ -58,4 +58,31 @@ describe('MinimumTaxModel', () => {
   it('rejects invalid params: negative minimum', () => {
     expect(model.validateParams({ rate: 0.27, base: 'x', minimum: -100 }).valid).toBe(false);
   });
+
+  // --- Commit 64: model edge cases ---
+
+  it('rate=0, minimum>0 → returns minimum', () => {
+    const params = { rate: 0, base: 'taxable_profit', minimum: 500000 };
+    const result = model.calculate({ taxable_profit: 10000000 }, dummyRule, params);
+    expect(result.value).toBe(500000);
+    expect((result.detail as { appliedMinimum: boolean }).appliedMinimum).toBe(true);
+  });
+
+  it('computed === minimum → returns minimum and appliedMinimum is false', () => {
+    // Need base * rate = minimum exactly
+    // 2000000 * 0.25 = 500000 = minimum
+    const params = { rate: 0.25, base: 'taxable_profit', minimum: 500000 };
+    const result = model.calculate({ taxable_profit: 2000000 }, dummyRule, params);
+    expect(result.value).toBe(500000);
+    // When computed equals minimum, Decimal.lt returns false, so appliedMinimum = false
+    expect((result.detail as { appliedMinimum: boolean }).appliedMinimum).toBe(false);
+  });
+
+  it('negative base value → returns minimum (computed is negative)', () => {
+    const params = { rate: 0.27, base: 'taxable_profit', minimum: 500000 };
+    const result = model.calculate({ taxable_profit: -1000000 }, dummyRule, params);
+    // -1000000 * 0.27 = -270000 < 500000, so minimum applies
+    expect(result.value).toBe(500000);
+    expect((result.detail as { appliedMinimum: boolean }).appliedMinimum).toBe(true);
+  });
 });
